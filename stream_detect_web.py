@@ -1,3 +1,4 @@
+import json
 import queue
 import threading
 from pathlib import Path
@@ -6,9 +7,13 @@ import cv2
 import numpy as np
 from flask import Flask, Response, jsonify, render_template, request
 
+ZONES_FILE = Path("zones.json")
+
 
 def create_app(ctx):
     app = Flask(__name__)
+
+    # ── MJPEG-стрим ──────────────────────────────────────────────────────────
 
     def _gen_frames():
         blank = None
@@ -20,7 +25,7 @@ def create_app(ctx):
                     blank = np.zeros((360, 640, 3), dtype=np.uint8)
                     cv2.putText(
                         blank,
-                        "Ожидание потока...",
+                        "Waiting for stream...",
                         (160, 180),
                         cv2.FONT_HERSHEY_SIMPLEX,
                         1.0,
@@ -33,6 +38,8 @@ def create_app(ctx):
                 continue
             yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + buf.tobytes() + b"\r\n"
 
+    # ── Страницы ──────────────────────────────────────────────────────────────
+
     @app.route("/")
     def index():
         videos = []
@@ -42,10 +49,10 @@ def create_app(ctx):
                 if p.suffix.lower() in ctx.VIDEO_EXTS
             )
         with ctx.state["lock"]:
-            sz = ctx.state["model_size"]
-            conf = ctx.state["conf"]
+            sz    = ctx.state["model_size"]
+            conf  = ctx.state["conf"]
             imgsz = ctx.state["imgsz"]
-            fpm = ctx.state["fpm"]
+            fpm   = ctx.state["fpm"]
         return render_template(
             "index.html",
             model=sz.upper(),
@@ -63,23 +70,27 @@ def create_app(ctx):
     def video_feed():
         return Response(_gen_frames(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
+    # ── Статистика ────────────────────────────────────────────────────────────
+
     @app.route("/stats")
     def stats_route():
         with ctx.state["lock"]:
-            return jsonify(
-                {
-                    "persons": ctx.state["persons"],
-                    "fps": ctx.state["fps"],
-                    "dfps": ctx.state["dfps"],
-                    "ms": ctx.state["ms"],
-                    "frames": ctx.state["frames"],
-                    "frame_skip": ctx.state["frame_skip"],
-                    "source_type": ctx.state["source_type"],
-                    "ts": ctx.state["ts"],
-                    "model_size": ctx.state["model_size"],
-                    "model_loading": ctx.state["model_loading"],
-                }
-            )
+            return jsonify({
+                "persons":       ctx.state["persons"],
+                "fps":           ctx.state["fps"],
+                "dfps":          ctx.state["dfps"],
+                "ms":            ctx.state["ms"],
+                "frames":        ctx.state["frames"],
+                "frame_skip":    ctx.state["frame_skip"],
+                "source_type":   ctx.state["source_type"],
+                "ts":            ctx.state["ts"],
+                "model_size":    ctx.state["model_size"],
+                "model_loading": ctx.state["model_loading"],
+                "violations":    ctx.state.get("violations", 0),
+                "camera_id":     ctx.state.get("camera_id"),
+            })
+
+    # ── Параметры детекции ────────────────────────────────────────────────────
 
     @app.route("/set_params", methods=["POST"])
     def set_params():
@@ -92,6 +103,8 @@ def create_app(ctx):
             if "fpm" in data:
                 ctx.state["fpm"] = max(1, int(data["fpm"]))
         return jsonify({"ok": True})
+
+    # ── Переключение модели ───────────────────────────────────────────────────
 
     @app.route("/set_model", methods=["POST"])
     def set_model_route():
@@ -113,6 +126,8 @@ def create_app(ctx):
         ).start()
         return jsonify({"ok": True})
 
+    # ── Переключение источника ────────────────────────────────────────────────
+
     @app.route("/set_source", methods=["POST"])
     def set_source():
         data = request.get_json(force=True)
@@ -122,5 +137,64 @@ def create_app(ctx):
             ctx._current_video = data["video"]
         ctx._restart_event.set()
         return jsonify({"ok": True})
+
+    # ── Зоны разметки (zones.json) ────────────────────────────────────────────
+
+    @app.route("/zones", methods=["GET"])
+    def zones_get():
+        if ZONES_FILE.exists():
+            return ZONES_FILE.read_text(encoding="utf-8"), 200, {
+                "Content-Type": "application/json; charset=utf-8"
+            }
+        return jsonify({"cameras": {}})
+
+    @app.route("/zones", methods=["POST"])
+    def zones_save():
+        data = request.get_json(force=True)
+        ZONES_FILE.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        return jsonify({"ok": True})
+
+    # ── Список камер ──────────────────────────────────────────────────────────
+
+    @app.route("/cameras", methods=["GET"])
+    def cameras_route():
+        from zone_manager import ZoneManager
+        cameras = ZoneManager.get_cameras_from_file(ZONES_FILE)
+        return jsonify({"cameras": cameras})
+
+    # ── Переключение активной камеры разметки ─────────────────────────────────
+
+    @app.route("/set_camera", methods=["POST"])
+    def set_camera_route():
+        """
+        Перезагружает зоны из zones.json для выбранной камеры.
+        Если camera_id пустой — сбрасывает камеру (зоны очищаются,
+        поведение идентично камере с пустым набором зон).
+        """
+        data      = request.get_json(force=True)
+        camera_id = data.get("camera_id", "").strip()
+        # Вызываем set_camera и с пустой строкой — сброс обрабатывается внутри
+        ctx.set_camera(camera_id)
+        return jsonify({"ok": True, "camera_id": camera_id or None})
+
+    # ── Состояния светофоров ──────────────────────────────────────────────────
+
+    @app.route("/tl_states", methods=["GET"])
+    def tl_states_route():
+        analyzer = getattr(ctx, "tl_analyzer", None)
+        if analyzer is None:
+            return jsonify({})
+        return jsonify(analyzer.get_all_states())
+
+    @app.route("/toggle_detect", methods=["POST"])
+    def toggle_detect():
+        data    = request.get_json()
+        enabled = data.get("enabled", True)
+        with ctx.state["lock"]:
+            ctx.state["detect_enabled"] = enabled
+        print(f"[detect] Detection {'ON' if enabled else 'OFF'}")
+        return jsonify({"ok": True, "enabled": enabled})
 
     return app
