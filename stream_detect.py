@@ -12,6 +12,7 @@ stream_detect.py — Веб-визуализация детекции людей
 
 import argparse
 import queue
+import subprocess
 import sys
 import threading
 import time
@@ -50,6 +51,10 @@ _model_reload_event = threading.Event()
 _frame_queue: queue.Queue = queue.Queue(maxsize=2)
 
 VIDEO_EXTS = {".mp4", ".avi", ".mov", ".mkv", ".ts", ".webm", ".m4v"}
+STREAM_WIDTH = 1280
+STREAM_HEIGHT = 720
+STREAM_FRAME_SIZE = STREAM_WIDTH * STREAM_HEIGHT * 3
+FFMPEG_PATH = Path(__file__).resolve().parent / "ffmpeg" / "bin" / "ffmpeg.exe"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # YOLO — горячая замена модели
@@ -158,6 +163,46 @@ def compute_skip(stream_fps: float, fpm: int) -> int:
     return max(1, int(round(stream_fps / fps_target)))
 
 
+def _open_ffmpeg_stream(url: str):
+    if not FFMPEG_PATH.exists():
+        raise FileNotFoundError(f"FFmpeg not found: {FFMPEG_PATH}")
+
+    command = [
+        str(FFMPEG_PATH),
+        "-loglevel", "quiet",
+        "-re",
+        "-fflags", "nobuffer",
+        "-flags", "low_delay",
+        "-probesize", "32",
+        "-analyzeduration", "0",
+        "-i", url,
+        "-vf", f"scale={STREAM_WIDTH}:{STREAM_HEIGHT}",
+        "-vsync", "1",
+        "-f", "rawvideo",
+        "-pix_fmt", "bgr24",
+        "-",
+    ]
+    return subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        bufsize=10**8,
+    )
+
+
+def _kill_process(process):
+    if process is None:
+        return
+    try:
+        process.kill()
+    except OSError:
+        pass
+    try:
+        process.wait(timeout=1)
+    except Exception:
+        pass
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Поток захвата + детекции
 # ──────────────────────────────────────────────────────────────────────────────
@@ -184,12 +229,15 @@ def _iter_video_sources():
         while True:
             if _restart_event.is_set():
                 url = _source_url; _restart_event.clear()
-            print(f"[INFO] Подключаемся: {url}")
-            cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
-            cap.set(cv2.CAP_PROP_BUFFERSIZE, 2)
-            if cap.isOpened():
-                yield cap, url
-            else:
+            print(f"[INFO] Подключаемся через ffmpeg: {url}")
+            try:
+                process = _open_ffmpeg_stream(url)
+                yield process, url
+            except FileNotFoundError as exc:
+                print(f"[ERROR] {exc}")
+                time.sleep(3)
+            except Exception as exc:
+                print(f"[WARN] FFmpeg error: {exc}")
                 print("[WARN] Повтор через 3 с…"); time.sleep(3)
 
 
@@ -200,25 +248,42 @@ def capture_thread():
     dfps_timer, dfps_cnt = time.perf_counter(), 0
     sfps_cur = 0.0
 
-    for cap, label in _iter_video_sources():
+    for source, label in _iter_video_sources():
         with state["lock"]:
             state["source_type"] = label[:50]
 
         frame_idx      = 0
         last_annotated = None
+        is_folder_source = _source_folder is not None
+        cap = source if is_folder_source else None
+        process = None if is_folder_source else source
 
         while True:
             if _restart_event.is_set():
-                cap.release(); break
+                if cap is not None:
+                    cap.release()
+                else:
+                    _kill_process(process)
+                break
 
             # Горячая замена модели
             if _model_reload_event.is_set():
                 _model_reload_event.clear()
 
-            ok, frame = cap.read()
+            if cap is not None:
+                ok, frame = cap.read()
+            else:
+                raw_frame = process.stdout.read(STREAM_FRAME_SIZE) if process and process.stdout else b""
+                ok = len(raw_frame) == STREAM_FRAME_SIZE
+                frame = None if not ok else np.frombuffer(raw_frame, np.uint8).reshape((STREAM_HEIGHT, STREAM_WIDTH, 3))
+
             if not ok:
-                print(f"[INFO] Конец: {label}")
-                cap.release(); break
+                print(f"[INFO] Конец/рестарт источника: {label}")
+                if cap is not None:
+                    cap.release()
+                else:
+                    _kill_process(process)
+                break
 
             frame_idx += 1
 
@@ -268,6 +333,9 @@ def capture_thread():
                 except queue.Empty: pass
                 try:    _frame_queue.put_nowait(annotated)
                 except queue.Full:  pass
+
+        if process is not None:
+            _kill_process(process)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
