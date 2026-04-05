@@ -14,6 +14,7 @@ stream_detect.py — Веб-визуализация детекции людей
 
 import argparse
 import queue
+import subprocess
 import sys
 import threading
 import time
@@ -54,7 +55,7 @@ state = {
     "model_loading": None,
     "violations":    0,
     "camera_id":     None,    # активная камера разметки
-    "detect_enabled": True,  # флаг включения детекции
+    "detect_enabled": True,   # флаг включения детекции
     "lock":          threading.Lock(),
 }
 
@@ -229,11 +230,11 @@ def _draw_legend(frame: np.ndarray, persons: int, ms: float, violations: int = 0
 
     lines = [
         (f"Inference: {ms:.0f} ms",        (180, 180, 180)),
-        (f"Людей:     {persons}",           ( 50, 205,  50)),
-        (f"Наруш.:    {violations}",        ( 60,  60, 230)),
-        (f"Модель:    yolov8{model_sz}",    ( 90, 130, 255)),
-        (f"FPM лим.:  {fpm}  (1/{skip})",   (180, 130,   0)),
-        (f"Камера:    {cam_id[:18]}",        (100, 200, 200)),
+        (f"Людей:     {persons}",          (50, 205, 50)),
+        (f"Наруш.:    {violations}",       (60, 60, 230)),
+        (f"Модель:    yolov8{model_sz}",   (90, 130, 255)),
+        (f"FPM лим.:  {fpm}  (1/{skip})",  (180, 130, 0)),
+        (f"Камера:    {cam_id[:18]}",      (100, 200, 200)),
     ]
 
     pad, lh   = 8, 22
@@ -382,14 +383,15 @@ def capture_thread():
             else:
                 raw_frame = process.stdout.read(STREAM_FRAME_SIZE) if process and process.stdout else b""
                 ok = len(raw_frame) == STREAM_FRAME_SIZE
-                frame = None if not ok else np.frombuffer(raw_frame, np.uint8).reshape((STREAM_HEIGHT, STREAM_WIDTH, 3))
+                frame = None if not ok else np.frombuffer(
+                    raw_frame, np.uint8
+                ).reshape((STREAM_HEIGHT, STREAM_WIDTH, 3))
 
             if _clear_cache_event.is_set():
                 _clear_cache_event.clear()
                 last_annotated = None
                 continue
 
-            ok, frame = cap.read()
             if not ok:
                 print(f"[INFO] Конец/рестарт источника: {label}")
                 if cap is not None:
@@ -472,10 +474,14 @@ def capture_thread():
             try:
                 _frame_queue.put_nowait(annotated)
             except queue.Full:
-                try:    _frame_queue.get_nowait()
-                except queue.Empty: pass
-                try:    _frame_queue.put_nowait(annotated)
-                except queue.Full:  pass
+                try:
+                    _frame_queue.get_nowait()
+                except queue.Empty:
+                    pass
+                try:
+                    _frame_queue.put_nowait(annotated)
+                except queue.Full:
+                    pass
 
         if process is not None:
             _kill_process(process)
