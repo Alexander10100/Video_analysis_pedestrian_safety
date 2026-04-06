@@ -42,7 +42,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from age_classifier import AgeClassifier
+from age_classifier import AgeClassifier, AgeTracker, BboxEMA  # ← добавлены AgeTracker, BboxEMA
 from traffic_light import TrafficLightAnalyzer
 from violation_detector import (
     ViolationDetector,
@@ -57,8 +57,11 @@ from zone_manager import ZoneManager
 VIDEO_EXTS = {".mp4", ".avi", ".mov", ".mkv", ".ts", ".webm", ".m4v"}
 
 # ── Кодек для выходного файла ─────────────────────────────────────────────────
-OUTPUT_FOURCC = "mp4v"   # совместим с большинством плееров через .mp4
+OUTPUT_FOURCC = "mp4v"
 OUTPUT_EXT    = ".mp4"
+
+# ── Периодичность чистки мёртвых треков ──────────────────────────────────────
+_EVICT_EVERY = 150   # детектируемых кадров
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -91,7 +94,6 @@ def _make_output_path(input_path: Path, output_arg: str | None) -> Path:
         p = Path(output_arg)
         if p.is_dir():
             return p / (input_path.stem + "_annotated" + OUTPUT_EXT)
-        # Если расширение не задано — добавить
         if not p.suffix:
             return p.with_suffix(OUTPUT_EXT)
         return p
@@ -110,7 +112,7 @@ def load_yolo(size: str):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Легенда — аналог _draw_legend из stream_detect.py, но офлайн-версия
+# Легенда
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _draw_legend_offline(
@@ -173,6 +175,8 @@ def process_video(
     tl_analyzer: TrafficLightAnalyzer,
     viol_det: ViolationDetector,
     age_clf: AgeClassifier | None,
+    age_tracker: AgeTracker,       # ← новый параметр
+    bbox_ema: BboxEMA,             # ← новый параметр
     camera_id: str,
     conf: float,
     imgsz: int,
@@ -181,7 +185,6 @@ def process_video(
 ) -> dict:
     """
     Обработать один видеофайл, записать аннотированный результат.
-
     Возвращает словарь со статистикой прогона.
     """
     cap = cv2.VideoCapture(str(input_path))
@@ -201,7 +204,7 @@ def process_video(
     print(f"       Выходной файл : {output_path}")
     print(f"       Детекция 1/{detect_every} кадров\n")
 
-    # ── Инициализировать/переинициализировать AgeClassifier под этот кадр ────
+    # ── AgeClassifier: создать/переинициализировать под высоту кадра ─────────
     if age_clf is None or age_clf.frame_height != frame_h:
         if camera_id:
             age_clf = AgeClassifier.load_for_camera(camera_id, frame_h)
@@ -209,7 +212,13 @@ def process_video(
             age_clf = AgeClassifier(frame_h)
     age_calibrated = age_clf.is_calibrated()
 
-    # ── Создать VideoWriter ───────────────────────────────────────────────────
+    # ── Сбрасываем EMA и трекер: история предыдущего файла не применима ──────
+    # track_id-ы между разными видеофайлами могут совпадать случайно,
+    # а геометрия сцены меняется — старые EMA-состояния только навредят.
+    age_tracker.reset()
+    bbox_ema.reset()
+
+    # ── VideoWriter ───────────────────────────────────────────────────────────
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fourcc = cv2.VideoWriter_fourcc(*OUTPUT_FOURCC)
     writer = cv2.VideoWriter(str(output_path), fourcc, src_fps, (frame_w, frame_h))
@@ -234,9 +243,10 @@ def process_video(
     all_zones = zone_mgr.get_all()
 
     last_annotated: np.ndarray | None = None
-    frame_idx  = 0
-    t_start    = time.perf_counter()
-    t_progress = t_start
+    frame_idx   = 0
+    detect_cnt  = 0          # счётчик именно детектируемых кадров (для evict)
+    t_start     = time.perf_counter()
+    t_progress  = t_start
 
     while frame_idx < limit:
         ok, frame = cap.read()
@@ -247,36 +257,47 @@ def process_video(
 
         # ── Детекция только на каждом detect_every-м кадре ───────────────────
         if frame_idx % detect_every == 0:
-            t0 = time.perf_counter()
+            detect_cnt += 1
 
+            t0 = time.perf_counter()
             results = model.track(
                 frame, classes=[0], conf=conf, iou=0.45,
                 imgsz=imgsz, persist=True, verbose=False,
             )[0]
             elapsed_ms = (time.perf_counter() - t0) * 1000
 
-            # Обновить светофоры
             if cw_zones:
                 tl_analyzer.process_frame(frame, cw_zones)
             tl_states = tl_analyzer.get_all_states()
 
             annotated = frame.copy()
-
             if all_zones:
                 annotated = draw_zones(annotated, all_zones, tl_states)
 
-            # ── Bbox + возраст ────────────────────────────────────────────────
-            norm_boxes   = []
-            adults_cnt   = 0
-            children_cnt = 0
+            # ── Bbox + EMA + классификация + temporal smoothing ───────────────
+            norm_boxes    = []
+            adults_cnt    = 0
+            children_cnt  = 0
+            active_tids: set[int] = set()
 
             if results.boxes is not None:
                 for box in results.boxes:
-                    x1, y1, x2, y2 = map(int, box.xyxy[0])
+                    raw_x1, raw_y1, raw_x2, raw_y2 = map(int, box.xyxy[0])
                     tid      = int(box.id[0])     if box.id   is not None else -1
                     conf_val = float(box.conf[0]) if box.conf is not None else 0.0
 
-                    age_label, age_conf = age_clf.classify(x1, y1, x2, y2)
+                    if tid >= 0:
+                        active_tids.add(tid)
+
+                    # 1. EMA: сглаживаем координаты по истории трека
+                    x1, y1, x2, y2 = bbox_ema.smooth(tid, raw_x1, raw_y1, raw_x2, raw_y2)
+
+                    # 2. Однокадровая классификация на сглаженном bbox
+                    raw_label, raw_conf = age_clf.classify(x1, y1, x2, y2)
+
+                    # 3. Temporal smoothing: стабилизируем метку через скользящее окно
+                    age_label, age_conf = age_tracker.update(tid, raw_label, raw_conf)
+
                     if age_label == "child":
                         children_cnt += 1
                     else:
@@ -291,6 +312,11 @@ def process_video(
                         age_conf,
                     ))
 
+            # ── Периодическая чистка мёртвых треков ──────────────────────────
+            if detect_cnt % _EVICT_EVERY == 0 and active_tids:
+                bbox_ema.evict(active_tids)
+                age_tracker.evict(active_tids)
+
             violations        = viol_det.analyze(norm_boxes) if norm_boxes else []
             annotated, vcount = draw_violations(annotated, violations, frame_w, frame_h)
 
@@ -300,25 +326,23 @@ def process_video(
 
             persons = len(norm_boxes)
 
-            # Легенда
             annotated = _draw_legend_offline(
                 annotated,
-                persons     = persons,
-                ms          = elapsed_ms,
-                violations  = vcount,
-                adults      = adults_cnt,
-                children    = children_cnt,
-                model_sz    = getattr(model, "model_name", "?").replace("yolov8", "").replace(".pt", ""),
-                camera_id   = camera_id,
+                persons        = persons,
+                ms             = elapsed_ms,
+                violations     = vcount,
+                adults         = adults_cnt,
+                children       = children_cnt,
+                model_sz       = getattr(model, "model_name", "?").replace("yolov8", "").replace(".pt", ""),
+                camera_id      = camera_id,
                 age_calibrated = age_calibrated,
-                frame_idx   = frame_idx,
-                total_frames = limit,
-                detect_every = detect_every,
+                frame_idx      = frame_idx,
+                total_frames   = limit,
+                detect_every   = detect_every,
             )
 
             last_annotated = annotated
 
-            # Накопление статистики
             stat["detected_frames"]  += 1
             stat["total_persons"]    += persons
             stat["total_violations"] += vcount
@@ -327,13 +351,11 @@ def process_video(
             stat["inference_ms_sum"] += elapsed_ms
 
         else:
-            # Кадр без детекции — повторяем последнюю аннотацию или оригинал
             annotated = last_annotated if last_annotated is not None else frame
 
         writer.write(annotated)
         stat["total_frames"] += 1
 
-        # ── Прогресс в консоль каждые 2 секунды ──────────────────────────────
         now = time.perf_counter()
         if now - t_progress >= 2.0:
             t_progress = now
@@ -350,12 +372,11 @@ def process_video(
                 end="", flush=True,
             )
 
-    # ── Финализация ───────────────────────────────────────────────────────────
     cap.release()
     writer.release()
 
     stat["elapsed_sec"] = time.perf_counter() - t_start
-    print()  # завершить строку прогресса
+    print()
 
     return stat
 
@@ -388,10 +409,12 @@ def _print_stats(stat: dict, input_path: Path, output_path: Path):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Инициализация всех компонентов под конкретную камеру
+# Инициализация pipeline под камеру
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _build_pipeline(camera_id: str) -> tuple[ZoneManager, TrafficLightAnalyzer, ViolationDetector]:
+def _build_pipeline(
+    camera_id: str,
+) -> tuple[ZoneManager, TrafficLightAnalyzer, ViolationDetector]:
     zone_mgr    = ZoneManager()
     tl_analyzer = TrafficLightAnalyzer()
 
@@ -423,8 +446,7 @@ def main():
     parser.add_argument("--camera",       type=str, default="",
                         help="ID камеры (для загрузки зон и калибровки возраста)")
     parser.add_argument("--output",       type=str, default="",
-                        help="Путь выходного файла или папки. "
-                             "По умолчанию: <input>_annotated.mp4 рядом с входным файлом")
+                        help="Путь выходного файла или папки")
     parser.add_argument("--model",        type=str, default="m",
                         choices=["n", "s", "m", "l", "x"],
                         help="Размер модели YOLOv8")
@@ -433,8 +455,7 @@ def main():
     parser.add_argument("--imgsz",        type=int,   default=640,
                         help="Размер входа модели")
     parser.add_argument("--detect-every", type=int,   default=1,
-                        help="Детектировать каждый N-й кадр (1 = каждый кадр). "
-                             "Промежуточные кадры записываются с последней аннотацией")
+                        help="Детектировать каждый N-й кадр (1 = каждый кадр)")
     parser.add_argument("--max-frames",   type=int,   default=0,
                         help="Ограничить число обрабатываемых кадров (0 = всё видео)")
 
@@ -443,10 +464,8 @@ def main():
     camera_id    = args.camera.strip()
     detect_every = max(1, args.detect_every)
 
-    # ── Загрузка модели ───────────────────────────────────────────────────────
     model = load_yolo(args.model)
 
-    # ── Сборка видеоисточников ────────────────────────────────────────────────
     if args.video:
         sources = [Path(args.video)]
     else:
@@ -457,11 +476,18 @@ def main():
             sys.exit(1)
         print(f"[INFO] Найдено {len(sources)} файлов в {folder}")
 
-    # ── Единый pipeline (зоны/светофоры/нарушения) для всех файлов одной камеры ──
-    # tl_analyzer сбрасывается между файлами, чтобы избежать грязного состояния
-    # светофоров от предыдущего видео.
     zone_mgr, _, _ = _build_pipeline(camera_id)
-    age_clf: AgeClassifier | None = None   # будет создан внутри process_video
+    age_clf: AgeClassifier | None = None
+
+    # ── AgeTracker и BboxEMA — одни на весь запуск, сбрасываются между файлами
+    # внутри process_video через .reset(), поэтому создаём здесь один раз.
+    age_tracker = AgeTracker(
+        window         = 15,
+        min_votes      = 5,
+        flip_threshold = 0.70,
+        warmup_scale   = 0.50,
+    )
+    bbox_ema = BboxEMA(alpha=0.35)
 
     total_stat: dict = {
         "total_frames": 0, "detected_frames": 0,
@@ -477,7 +503,7 @@ def main():
 
         out_path = _make_output_path(src, args.output if len(sources) == 1 else args.output)
 
-        # Пересоздаём tl_analyzer и viol_det на каждый файл — чистое состояние
+        # tl_analyzer и viol_det пересоздаём на каждый файл — чистое состояние светофоров
         tl_analyzer = TrafficLightAnalyzer()
         viol_det    = ViolationDetector(zone_mgr, tl_analyzer)
 
@@ -489,6 +515,8 @@ def main():
             tl_analyzer  = tl_analyzer,
             viol_det     = viol_det,
             age_clf      = age_clf,
+            age_tracker  = age_tracker,   # ← передаём
+            bbox_ema     = bbox_ema,       # ← передаём
             camera_id    = camera_id,
             conf         = args.conf,
             imgsz        = args.imgsz,
@@ -501,7 +529,6 @@ def main():
             for k in total_stat:
                 total_stat[k] += stat.get(k, 0)
 
-    # ── Суммарная статистика по нескольким файлам ─────────────────────────────
     if len(sources) > 1 and total_stat["total_frames"] > 0:
         print("══════════════════════════════════════════════════════════")
         print(f"  ИТОГО по {len(sources)} файлам")

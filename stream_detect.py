@@ -28,13 +28,13 @@ import cv2
 import numpy as np
 from stream_detect_web import create_app
 
-from zone_manager        import ZoneManager
+from age_classifier      import AgeClassifier, AgeTracker, BboxEMA
 from traffic_light       import TrafficLightAnalyzer
-from age_classifier      import AgeClassifier
 from violation_detector  import (
     ViolationDetector, draw_violations, draw_zones,
     draw_traffic_light_states, _put_text_pil,
 )
+from zone_manager        import ZoneManager
 
 # ── Глобальные объекты разметки ───────────────────────────────────────────────
 zone_mgr    = ZoneManager()
@@ -42,16 +42,21 @@ tl_analyzer = TrafficLightAnalyzer()
 viol_det    = ViolationDetector(zone_mgr, tl_analyzer)
 
 # ── AgeClassifier — создаётся/пересоздаётся при смене камеры ─────────────────
-_age_clf: AgeClassifier | None = None
+_age_clf:  AgeClassifier | None = None
 _age_clf_lock = threading.Lock()
 
+# ── AgeTracker и BboxEMA — глобальные, сбрасываются при смене камеры ─────────
+# Не требуют lock: обращение только из одного capture_thread.
+_age_tracker = AgeTracker(
+    window         = 15,
+    min_votes      = 5,
+    flip_threshold = 0.70,
+    warmup_scale   = 0.50,
+)
+_bbox_ema = BboxEMA(alpha=0.35)
 
-def get_age_classifier(frame_height: int) -> AgeClassifier:
-    """Вернуть текущий классификатор (может быть None → создаём без калибровки)."""
-    with _age_clf_lock:
-        if _age_clf is None:
-            return AgeClassifier(frame_height)
-        return _age_clf
+# Счётчик кадров для периодической чистки мёртвых треков
+_evict_every = 150   # кадров
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -182,8 +187,12 @@ def _kill_process(process):
 # ── Переключение камеры ───────────────────────────────────────────────────────
 
 def set_camera(camera_id: str):
-    """Перезагрузить зоны и калибровку возраста для выбранной камеры."""
+    """Перезагрузить зоны и сбросить все временные состояния для новой камеры."""
     global tl_analyzer, viol_det, _age_clf
+
+    # Сбрасываем EMA и трекер — история старой камеры не применима к новой
+    _bbox_ema.reset()
+    _age_tracker.reset()
 
     if not camera_id:
         with zone_mgr._lock:
@@ -215,13 +224,23 @@ def set_camera(camera_id: str):
 
 # ── Детекция и анализ ─────────────────────────────────────────────────────────
 
-def detect_and_analyze(model, frame: np.ndarray, conf: float, imgsz: int):
+def detect_and_analyze(
+    model,
+    frame: np.ndarray,
+    conf: float,
+    imgsz: int,
+    frame_idx: int,
+):
+    """
+    Запустить YOLO-трекинг, классифицировать возраст (с EMA + temporal smoothing)
+    и определить нарушения ПДД. Вернуть аннотированный кадр, число людей и время.
+    """
     global _age_clf
 
     t0 = time.perf_counter()
     results = model.track(
         frame, classes=[0], conf=conf, iou=0.45,
-        imgsz=imgsz, persist=True, verbose=False
+        imgsz=imgsz, persist=True, verbose=False,
     )[0]
     elapsed_ms = (time.perf_counter() - t0) * 1000
 
@@ -252,18 +271,30 @@ def detect_and_analyze(model, frame: np.ndarray, conf: float, imgsz: int):
                 state["age_calibrated"] = _age_clf.is_calibrated()
         age_clf = _age_clf
 
-    # ── Bbox + классификация возраста ─────────────────────────────────────────
+    # ── Bbox + EMA-сглаживание + классификация возраста + temporal smoothing ──
     norm_boxes   = []
     adults_cnt   = 0
     children_cnt = 0
+    active_tids: set[int] = set()
 
     if results.boxes is not None:
         for box in results.boxes:
-            x1, y1, x2, y2 = map(int, box.xyxy[0])
+            raw_x1, raw_y1, raw_x2, raw_y2 = map(int, box.xyxy[0])
             tid      = int(box.id[0])     if box.id   is not None else -1
             conf_val = float(box.conf[0]) if box.conf is not None else 0.0
 
-            age_label, age_conf = age_clf.classify(x1, y1, x2, y2)
+            if tid >= 0:
+                active_tids.add(tid)
+
+            # 1. EMA: сглаживаем координаты по истории трека
+            x1, y1, x2, y2 = _bbox_ema.smooth(tid, raw_x1, raw_y1, raw_x2, raw_y2)
+
+            # 2. Однокадровая классификация на сглаженном bbox
+            raw_label, raw_conf = age_clf.classify(x1, y1, x2, y2)
+
+            # 3. Temporal smoothing: стабилизируем метку через скользящее окно
+            age_label, age_conf = _age_tracker.update(tid, raw_label, raw_conf)
+
             if age_label == "child":
                 children_cnt += 1
             else:
@@ -277,6 +308,16 @@ def detect_and_analyze(model, frame: np.ndarray, conf: float, imgsz: int):
                 age_label,
                 age_conf,
             ))
+
+    # ── Периодическая чистка мёртвых треков ──────────────────────────────────
+    if frame_idx % _evict_every == 0 and active_tids:
+        evicted_ema     = _bbox_ema.evict(active_tids)
+        evicted_tracker = _age_tracker.evict(active_tids)
+        if evicted_ema or evicted_tracker:
+            print(
+                f"[evict] кадр {frame_idx}: "
+                f"BboxEMA={evicted_ema}, AgeTracker={evicted_tracker} треков удалено"
+            )
 
     violations        = viol_det.analyze(norm_boxes) if norm_boxes else []
     annotated, vcount = draw_violations(annotated, violations, fw, fh)
@@ -294,8 +335,14 @@ def detect_and_analyze(model, frame: np.ndarray, conf: float, imgsz: int):
     return annotated, persons, elapsed_ms
 
 
-def _draw_legend(frame: np.ndarray, persons: int, ms: float,
-                 violations: int = 0, adults: int = 0, children: int = 0):
+def _draw_legend(
+    frame: np.ndarray,
+    persons: int,
+    ms: float,
+    violations: int = 0,
+    adults: int = 0,
+    children: int = 0,
+):
     with state["lock"]:
         model_sz       = state["model_size"]
         fpm            = state["fpm"]
@@ -406,7 +453,6 @@ def capture_thread():
         cap     = source if is_folder_source else None
         process = None   if is_folder_source else source
 
-        # Определяем высоту кадра: из cap для папки, константа для ffmpeg
         fh_cap = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) if cap else STREAM_HEIGHT
         if fh_cap > 0:
             cam_id = state.get("camera_id") or ""
@@ -441,6 +487,7 @@ def capture_thread():
                 last_annotated = None
                 with _age_clf_lock:
                     _age_clf = None
+                # BboxEMA и AgeTracker уже сброшены в set_camera()
                 continue
 
             # ── Читаем кадр ───────────────────────────────────────────────────
@@ -488,7 +535,10 @@ def capture_thread():
                 if detect_enabled:
                     with _model_lock:
                         mdl = _model
-                    annotated, persons, ms = detect_and_analyze(mdl, frame, conf, imgsz)
+                    # Передаём frame_idx для периодической чистки мёртвых треков
+                    annotated, persons, ms = detect_and_analyze(
+                        mdl, frame, conf, imgsz, frame_idx
+                    )
                     last_annotated = annotated
 
                     dfps_cnt += 1
@@ -536,7 +586,6 @@ def capture_thread():
                 try:    _frame_queue.put_nowait(annotated)
                 except queue.Full:  pass
 
-        # Финальная очистка процесса ffmpeg после выхода из while
         if process is not None:
             _kill_process(process)
 
