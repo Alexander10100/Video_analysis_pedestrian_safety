@@ -9,15 +9,12 @@ zone_manager.py — Управление зонами разметки.
     "type":    "road",                # road | crosswalk
     "color":   [R, G, B],
     # только для type=crosswalk:
-    "traffic_light_roi": [x,y,w,h] | null,  # нормализованные 0..1
+    "traffic_light_roi": [x,y,w,h] | [[x,y,w,h], ...] | null,  # нормализованные 0..1
     "has_light": true | false,
+    "light_type": "pedestrian" | "vehicle",
+      # pedestrian — пешеходный светофор: зелёный = разрешено
+      # vehicle    — автомобильный (навстречу пешеходам): красный для машин = разрешено пешеходам
   }
-
-zones.json поддерживает два формата:
-  1. Новый (cameras-dict):
-     {"cameras": {"cam_01": {"label": "cam_01", "zones": [...]}}}
-  2. Старый (плоский список):
-     [{zone}, {zone}, ...]
 """
 
 from __future__ import annotations
@@ -32,6 +29,7 @@ from typing import Optional
 import cv2
 import numpy as np
 
+from traffic_light import LIGHT_TYPE_PEDESTRIAN, LIGHT_TYPE_VEHICLE
 
 ZONES_FILE = Path("zones.json")
 
@@ -40,12 +38,13 @@ ZONES_FILE = Path("zones.json")
 class RoadZone:
     id:                 str
     label:              str
-    polygon:            list[list[int]]   # [[x,y], ...] нормализованные 0..1
+    polygon:            list[list[float]]
     type:               str               # "road" | "crosswalk"
     color:              list[int]         # [R, G, B]
-    traffic_light_roi:  Optional[list[int]] = None  # [x,y,w,h] нормализованные 0..1
+    traffic_light_roi:  Optional[object] = None
     has_light:          bool = False
-    parent_id:          Optional[str] = None  # crosswalk → id родительской road-зоны
+    parent_id:          Optional[str] = None
+    light_type:         str = LIGHT_TYPE_PEDESTRIAN  # "pedestrian" | "vehicle"
 
     def to_dict(self) -> dict:
         return {
@@ -57,6 +56,7 @@ class RoadZone:
             "traffic_light_roi": self.traffic_light_roi,
             "has_light":         self.has_light,
             "parent_id":         self.parent_id,
+            "light_type":        self.light_type,
         }
 
     @staticmethod
@@ -70,6 +70,7 @@ class RoadZone:
             traffic_light_roi=d.get("traffic_light_roi"),
             has_light=d.get("has_light", False),
             parent_id=d.get("parent_id"),
+            light_type=d.get("light_type", LIGHT_TYPE_PEDESTRIAN),
         )
 
     def np_polygon(self) -> np.ndarray:
@@ -82,17 +83,10 @@ class RoadZone:
 
     def contains_box(self, x1: float, y1: float, x2: float, y2: float,
                      mode: str = "feet") -> bool:
-        """
-        mode='feet'   — проверяем нижнюю середину bbox (ноги человека).
-        mode='center' — центр bbox.
-        mode='any'    — любой из 4 углов или центр.
-        Координаты нормализованные 0..1.
-        """
         if mode == "feet":
             return self.contains_point((x1 + x2) / 2, y2)
         if mode == "center":
             return self.contains_point((x1 + x2) / 2, (y1 + y2) / 2)
-        # any
         pts = [
             ((x1 + x2) / 2, (y1 + y2) / 2),
             (x1, y1), (x2, y1), (x1, y2), (x2, y2),
@@ -113,8 +107,9 @@ class ZoneManager:
 
     def add_zone(self, label: str, polygon: list, zone_type: str = "road",
                  color: list | None = None, has_light: bool = False,
-                 traffic_light_roi: list | None = None,
-                 parent_id: str | None = None) -> RoadZone:
+                 traffic_light_roi=None,
+                 parent_id: str | None = None,
+                 light_type: str = LIGHT_TYPE_PEDESTRIAN) -> RoadZone:
         if color is None:
             color = [0, 80, 220] if zone_type == "road" else [220, 160, 0]
         z = RoadZone(
@@ -126,6 +121,7 @@ class ZoneManager:
             has_light=has_light,
             traffic_light_roi=traffic_light_roi,
             parent_id=parent_id,
+            light_type=light_type,
         )
         with self._lock:
             self._zones[z.id] = z
@@ -174,48 +170,31 @@ class ZoneManager:
     # ── Персистентность ───────────────────────────────────────────────────────
 
     def _save(self):
-        """Сохраняет плоский список зон (устаревший формат, используется при ручном CRUD)."""
         with self._lock:
             data = [z.to_dict() for z in self._zones.values()]
         self._file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def _load(self):
-        """
-        Первичная загрузка при старте.
-        Поддерживает оба формата:
-          - Новый {"cameras": {...}}  — ждём явного вызова reload_for_camera()
-          - Старый плоский список     — загружаем сразу
-        """
         if not self._file.exists():
             return
         try:
             raw = json.loads(self._file.read_text(encoding="utf-8"))
             if isinstance(raw, dict) and "cameras" in raw:
-                # Новый формат — зоны будут загружены через reload_for_camera()
-                print(f"[zones] Обнаружен формат cameras-dict в {self._file}. "
-                      f"Ожидайте выбора камеры через /set_camera.")
+                print(f"[zones] Обнаружен формат cameras-dict. Ожидайте /set_camera.")
                 return
             if isinstance(raw, list):
                 with self._lock:
                     for d in raw:
                         z = RoadZone.from_dict(d)
                         self._zones[z.id] = z
-                print(f"[zones] Загружено {len(self._zones)} зон из {self._file} (плоский формат)")
+                print(f"[zones] Загружено {len(self._zones)} зон (плоский формат)")
         except Exception as e:
             print(f"[zones] Ошибка загрузки: {e}")
 
     def reload_for_camera(self, camera_id: str) -> int:
-        """
-        Перезагрузить зоны из zones.json для конкретной камеры.
-        Поддерживает новый формат {"cameras": {"cam_id": {"zones": [...]}}}
-        и старый плоский список.
-        Возвращает количество загруженных зон.
-        """
         with self._lock:
             self._zones.clear()
-
         if not self._file.exists():
-            print(f"[zones] {self._file} не найден")
             return 0
         try:
             raw = json.loads(self._file.read_text(encoding="utf-8"))
@@ -226,12 +205,10 @@ class ZoneManager:
                 zones_list = raw
             else:
                 zones_list = []
-
             with self._lock:
                 for d in zones_list:
                     z = RoadZone.from_dict(d)
                     self._zones[z.id] = z
-
             n = len(self._zones)
             print(f"[zones] Камера '{camera_id}': загружено {n} зон")
             return n
@@ -241,11 +218,6 @@ class ZoneManager:
 
     @staticmethod
     def get_cameras_from_file(filepath: Path = ZONES_FILE) -> dict:
-        """
-        Читает zones.json и возвращает словарь
-        {camera_id: {"label": str, "zones_count": int}}
-        без загрузки зон в память ZoneManager.
-        """
         if not filepath.exists():
             return {}
         try:

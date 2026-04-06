@@ -23,20 +23,15 @@ def create_app(ctx):
             except queue.Empty:
                 if blank is None:
                     blank = np.zeros((360, 640, 3), dtype=np.uint8)
-                    cv2.putText(
-                        blank,
-                        "Waiting for stream...",
-                        (160, 180),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        1.0,
-                        (55, 55, 55),
-                        2,
-                    )
+                    cv2.putText(blank, "Waiting for stream...",
+                                (160, 180), cv2.FONT_HERSHEY_SIMPLEX,
+                                1.0, (55, 55, 55), 2)
                 frame = blank
             ret, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 82])
             if not ret:
                 continue
-            yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + buf.tobytes() + b"\r\n"
+            yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"
+                   + buf.tobytes() + b"\r\n")
 
     # ── Страницы ──────────────────────────────────────────────────────────────
 
@@ -68,7 +63,8 @@ def create_app(ctx):
 
     @app.route("/video_feed")
     def video_feed():
-        return Response(_gen_frames(), mimetype="multipart/x-mixed-replace; boundary=frame")
+        return Response(_gen_frames(),
+                        mimetype="multipart/x-mixed-replace; boundary=frame")
 
     # ── Статистика ────────────────────────────────────────────────────────────
 
@@ -76,18 +72,21 @@ def create_app(ctx):
     def stats_route():
         with ctx.state["lock"]:
             return jsonify({
-                "persons":       ctx.state["persons"],
-                "fps":           ctx.state["fps"],
-                "dfps":          ctx.state["dfps"],
-                "ms":            ctx.state["ms"],
-                "frames":        ctx.state["frames"],
-                "frame_skip":    ctx.state["frame_skip"],
-                "source_type":   ctx.state["source_type"],
-                "ts":            ctx.state["ts"],
-                "model_size":    ctx.state["model_size"],
-                "model_loading": ctx.state["model_loading"],
-                "violations":    ctx.state.get("violations", 0),
-                "camera_id":     ctx.state.get("camera_id"),
+                "persons":        ctx.state["persons"],
+                "fps":            ctx.state["fps"],
+                "dfps":           ctx.state["dfps"],
+                "ms":             ctx.state["ms"],
+                "frames":         ctx.state["frames"],
+                "frame_skip":     ctx.state["frame_skip"],
+                "source_type":    ctx.state["source_type"],
+                "ts":             ctx.state["ts"],
+                "model_size":     ctx.state["model_size"],
+                "model_loading":  ctx.state["model_loading"],
+                "violations":     ctx.state.get("violations", 0),
+                "camera_id":      ctx.state.get("camera_id"),
+                "adults":         ctx.state.get("adults", 0),
+                "children":       ctx.state.get("children", 0),
+                "age_calibrated": ctx.state.get("age_calibrated", False),
             })
 
     # ── Параметры детекции ────────────────────────────────────────────────────
@@ -96,12 +95,9 @@ def create_app(ctx):
     def set_params():
         data = request.get_json(force=True)
         with ctx.state["lock"]:
-            if "conf" in data:
-                ctx.state["conf"] = float(data["conf"])
-            if "imgsz" in data:
-                ctx.state["imgsz"] = int(data["imgsz"])
-            if "fpm" in data:
-                ctx.state["fpm"] = max(1, int(data["fpm"]))
+            if "conf"  in data: ctx.state["conf"]  = float(data["conf"])
+            if "imgsz" in data: ctx.state["imgsz"] = int(data["imgsz"])
+            if "fpm"   in data: ctx.state["fpm"]   = max(1, int(data["fpm"]))
         return jsonify({"ok": True})
 
     # ── Переключение модели ───────────────────────────────────────────────────
@@ -118,12 +114,8 @@ def create_app(ctx):
             if ctx.state["model_size"] == size:
                 return jsonify({"ok": True, "note": "already loaded"})
             ctx.state["model_loading"] = size
-        threading.Thread(
-            target=ctx._do_reload_model,
-            args=(size,),
-            daemon=True,
-            name=f"reload-{size}",
-        ).start()
+        threading.Thread(target=ctx._do_reload_model, args=(size,),
+                         daemon=True, name=f"reload-{size}").start()
         return jsonify({"ok": True})
 
     # ── Переключение источника ────────────────────────────────────────────────
@@ -131,14 +123,12 @@ def create_app(ctx):
     @app.route("/set_source", methods=["POST"])
     def set_source():
         data = request.get_json(force=True)
-        if "url" in data:
-            ctx._source_url = data["url"].strip()
-        if "video" in data:
-            ctx._current_video = data["video"]
+        if "url"   in data: ctx._source_url    = data["url"].strip()
+        if "video" in data: ctx._current_video = data["video"]
         ctx._restart_event.set()
         return jsonify({"ok": True})
 
-    # ── Зоны разметки (zones.json) ────────────────────────────────────────────
+    # ── Зоны разметки ─────────────────────────────────────────────────────────
 
     @app.route("/zones", methods=["GET"])
     def zones_get():
@@ -152,8 +142,7 @@ def create_app(ctx):
     def zones_save():
         data = request.get_json(force=True)
         ZONES_FILE.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         return jsonify({"ok": True})
 
     # ── Список камер ──────────────────────────────────────────────────────────
@@ -162,20 +151,22 @@ def create_app(ctx):
     def cameras_route():
         from zone_manager import ZoneManager
         cameras = ZoneManager.get_cameras_from_file(ZONES_FILE)
+
+        # Дополняем информацией о наличии калибровки возраста
+        from pathlib import Path as P
+        calib_dir = P("calibrations")
+        for cid, info in cameras.items():
+            calib_path = calib_dir / f"{cid}.json"
+            info["age_calibrated"] = calib_path.exists()
+
         return jsonify({"cameras": cameras})
 
-    # ── Переключение активной камеры разметки ─────────────────────────────────
+    # ── Переключение активной камеры ──────────────────────────────────────────
 
     @app.route("/set_camera", methods=["POST"])
     def set_camera_route():
-        """
-        Перезагружает зоны из zones.json для выбранной камеры.
-        Если camera_id пустой — сбрасывает камеру (зоны очищаются,
-        поведение идентично камере с пустым набором зон).
-        """
         data      = request.get_json(force=True)
         camera_id = data.get("camera_id", "").strip()
-        # Вызываем set_camera и с пустой строкой — сброс обрабатывается внутри
         ctx.set_camera(camera_id)
         return jsonify({"ok": True, "camera_id": camera_id or None})
 
@@ -188,13 +179,59 @@ def create_app(ctx):
             return jsonify({})
         return jsonify(analyzer.get_all_states())
 
+    # ── Включение/выключение детекции ─────────────────────────────────────────
+
     @app.route("/toggle_detect", methods=["POST"])
     def toggle_detect():
         data    = request.get_json()
         enabled = data.get("enabled", True)
         with ctx.state["lock"]:
             ctx.state["detect_enabled"] = enabled
-        print(f"[detect] Detection {'ON' if enabled else 'OFF'}")
         return jsonify({"ok": True, "enabled": enabled})
+
+    # ── Статус калибровки возраста для текущей камеры ────────────────────────
+
+    @app.route("/age_calibration_status", methods=["GET"])
+    def age_calibration_status():
+        """Возвращает статус калибровки и список доступных видео для выбора."""
+        with ctx.state["lock"]:
+            camera_id     = ctx.state.get("camera_id") or ""
+            age_calibrated = ctx.state.get("age_calibrated", False)
+
+        from pathlib import Path as P
+        calib_dir  = P("calibrations")
+        calib_file = calib_dir / f"{camera_id}.json" if camera_id else None
+        calib_info = {}
+
+        if calib_file and calib_file.exists():
+            try:
+                data = json.loads(calib_file.read_text(encoding="utf-8"))
+                refs = data.get("refs", {})
+                samples = data.get("samples_count", {})
+                calib_info = {
+                    "ready_bands":   len(refs),
+                    "total_bands":   10,
+                    "percent":       int(len(refs) / 10 * 100),
+                    "total_samples": sum(samples.values()),
+                }
+            except Exception:
+                pass
+
+        # Видео доступные для калибровки
+        available_videos = []
+        if ctx._source_folder:
+            folder = P(ctx._source_folder)
+            if folder.is_dir():
+                available_videos = sorted(
+                    p.name for p in folder.iterdir()
+                    if p.suffix.lower() in ctx.VIDEO_EXTS
+                )
+
+        return jsonify({
+            "camera_id":     camera_id,
+            "calibrated":    age_calibrated,
+            "calib_info":    calib_info,
+            "available_videos": available_videos,
+        })
 
     return app

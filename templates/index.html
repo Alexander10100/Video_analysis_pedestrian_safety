@@ -32,62 +32,45 @@
     flex-direction: column;
   }
 
-  /* ── Header ── */
   header {
-    display: flex;
-    align-items: center;
-    gap: 12px;
+    display: flex; align-items: center; gap: 12px;
     padding: 12px 20px;
     border-bottom: 1px solid var(--border);
     background: var(--surface);
-    flex-wrap: wrap;
-    flex-shrink: 0;
+    flex-wrap: wrap; flex-shrink: 0;
   }
   .logo {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--accent);
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
+    font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+    font-weight: 600; color: var(--accent); letter-spacing: 0.12em; text-transform: uppercase;
   }
   .badge {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 10px;
-    padding: 3px 8px;
-    border-radius: 3px;
+    font-family: 'IBM Plex Mono', monospace; font-size: 10px;
+    padding: 3px 8px; border-radius: 3px;
     background: color-mix(in srgb, var(--accent) 12%, transparent);
     color: var(--accent);
     border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
     letter-spacing: 0.08em;
   }
   #model-badge {
-    position: relative;
-    overflow: hidden;
+    position: relative; overflow: hidden;
     background: color-mix(in srgb, var(--amber) 12%, transparent);
     color: var(--amber);
     border-color: color-mix(in srgb, var(--amber) 30%, transparent);
     transition: color .3s, border-color .3s, background .3s;
   }
   #model-badge.loading::after {
-    content: '';
-    position: absolute; inset: 0;
+    content: ''; position: absolute; inset: 0;
     background: linear-gradient(90deg, transparent 0%, rgba(255,170,0,.35) 50%, transparent 100%);
     animation: shimmer .9s linear infinite;
   }
   @keyframes shimmer { from{transform:translateX(-100%)} to{transform:translateX(100%)} }
 
   #btn-markup-toggle {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 10px;
-    padding: 3px 10px;
-    border-radius: 3px;
+    font-family: 'IBM Plex Mono', monospace; font-size: 10px;
+    padding: 3px 10px; border-radius: 3px;
     border: 1px solid color-mix(in srgb, var(--accent2) 40%, transparent);
     background: color-mix(in srgb, var(--accent2) 10%, transparent);
-    color: var(--accent2);
-    cursor: pointer;
-    letter-spacing: 0.08em;
-    transition: all .2s;
+    color: var(--accent2); cursor: pointer; letter-spacing: 0.08em; transition: all .2s;
   }
   #btn-markup-toggle:hover { background: color-mix(in srgb, var(--accent2) 20%, transparent); }
   #btn-markup-toggle.active {
@@ -107,26 +90,16 @@
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
   #status-text { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--dim); }
 
-  /* ── Main layout ── */
   main {
-    display: grid;
-    grid-template-columns: 1fr 292px;
-    flex: 1;
-    overflow: hidden;
-    height: calc(100vh - 53px);
+    display: grid; grid-template-columns: 1fr 300px;
+    flex: 1; overflow: hidden; height: calc(100vh - 53px);
   }
 
-  /* ── Video pane ── */
   .video-pane {
     position: relative; background: #000;
     display: flex; align-items: flex-start; justify-content: flex-start; overflow: hidden;
   }
-  #stream {
-    display: block;
-    max-width: 100%;
-    max-height: 100%;
-    object-fit: contain;
-  }
+  #stream { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
   .overlay-src {
     position: absolute; top: 12px; left: 12px;
     font-family: 'IBM Plex Mono', monospace; font-size: 10px;
@@ -138,80 +111,43 @@
     position: absolute; bottom: 12px; right: 12px;
     font-family: 'IBM Plex Mono', monospace; font-size: 10px;
     color: rgba(255,170,0,.8); background: rgba(0,0,0,.55);
-    padding: 4px 8px; border-radius: 3px; letter-spacing: .06em;
-    display: none;
+    padding: 4px 8px; border-radius: 3px; letter-spacing: .06em; display: none;
   }
 
-  /* ── Canvas разметки ── */
-  #markup-canvas {
-    position: absolute;
-    top: 0; left: 0;
-    pointer-events: none;
-    display: none;
-  }
-  #markup-canvas.active {
-    pointer-events: all;
-    cursor: crosshair;
-  }
+  #markup-canvas { position: absolute; top: 0; left: 0; pointer-events: none; display: none; }
+  #markup-canvas.active { pointer-events: all; cursor: crosshair; }
 
-  /* ── Тулбар разметки поверх видео ── */
   #markup-toolbar {
-    display: none;
-    position: absolute;
-    bottom: 14px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(10,12,15,.9);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 8px 12px;
-    gap: 8px;
-    align-items: center;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 11px;
-    white-space: nowrap;
-    backdrop-filter: blur(6px);
+    display: none; position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
+    background: rgba(10,12,15,.9); border: 1px solid var(--border); border-radius: 6px;
+    padding: 8px 12px; gap: 8px; align-items: center;
+    font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+    white-space: nowrap; backdrop-filter: blur(6px);
   }
   #markup-toolbar.visible { display: flex; }
   #markup-toolbar .tb-hint { color: var(--dim); }
   .tb-btn {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 11px;
-    padding: 4px 10px;
-    border-radius: 4px;
-    border: 1px solid var(--border);
-    background: var(--surface);
-    color: var(--text);
-    cursor: pointer;
-    transition: background .15s;
+    font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+    padding: 4px 10px; border-radius: 4px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text); cursor: pointer; transition: background .15s;
   }
   .tb-btn:hover { background: #1c2030; }
-  .tb-btn.green {
-    border-color: color-mix(in srgb, var(--accent) 50%, transparent);
-    color: var(--accent);
-  }
+  .tb-btn.green { border-color: color-mix(in srgb, var(--accent) 50%, transparent); color: var(--accent); }
   .tb-btn.green:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
-  .tb-btn.red {
-    border-color: color-mix(in srgb, var(--warn) 50%, transparent);
-    color: var(--warn);
-  }
-  .tb-btn.red:hover { background: color-mix(in srgb, var(--warn) 10%, transparent); }
+  .tb-btn.red   { border-color: color-mix(in srgb, var(--warn) 50%, transparent); color: var(--warn); }
+  .tb-btn.red:hover   { background: color-mix(in srgb, var(--warn) 10%, transparent); }
 
-  /* ── Sidebar ── */
   aside {
-    border-left: 1px solid var(--border);
-    background: var(--surface);
-    display: flex; flex-direction: column;
-    overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+    border-left: 1px solid var(--border); background: var(--surface);
+    display: flex; flex-direction: column; overflow-y: auto;
+    scrollbar-width: thin; scrollbar-color: var(--border) transparent;
   }
   .section { padding: 14px 16px; border-bottom: 1px solid var(--border); }
   .section-title {
     font-family: 'IBM Plex Mono', monospace; font-size: 10px;
-    letter-spacing: .12em; text-transform: uppercase;
-    color: var(--dim); margin-bottom: 11px;
+    letter-spacing: .12em; text-transform: uppercase; color: var(--dim); margin-bottom: 11px;
   }
 
-  /* ── Markup sidebar panel ── */
   #markup-panel { display: none; flex-direction: column; }
   #markup-panel.visible { display: flex; }
 
@@ -220,14 +156,36 @@
     flex: 1; padding: 6px; border-radius: var(--radius);
     border: 1px solid var(--border); background: var(--bg);
     color: var(--dim); font-family: 'IBM Plex Mono', monospace;
-    font-size: 10px; cursor: pointer; text-align: center;
-    transition: all .2s;
+    font-size: 10px; cursor: pointer; text-align: center; transition: all .2s;
   }
   .zt-btn:hover { border-color: var(--accent2); color: var(--accent2); }
   .zt-btn.active {
-    border-color: var(--amber);
-    color: var(--amber);
+    border-color: var(--amber); color: var(--amber);
     background: color-mix(in srgb, var(--amber) 10%, transparent);
+  }
+
+  /* Тип светофора */
+  .light-type-btns { display: flex; gap: 6px; margin-bottom: 8px; }
+  .lt-btn {
+    flex: 1; padding: 5px; border-radius: var(--radius);
+    border: 1px solid var(--border); background: var(--bg);
+    color: var(--dim); font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px; cursor: pointer; text-align: center; transition: all .2s;
+  }
+  .lt-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .lt-btn.active {
+    border-color: var(--accent); color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+  }
+  .lt-btn.vehicle.active {
+    border-color: var(--warn); color: var(--warn);
+    background: color-mix(in srgb, var(--warn) 10%, transparent);
+  }
+  .lt-hint {
+    font-family: 'IBM Plex Mono', monospace; font-size: 10px;
+    color: var(--dim); padding: 5px 7px; background: var(--bg);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    line-height: 1.6; margin-bottom: 8px;
   }
 
   .markup-input {
@@ -237,12 +195,6 @@
     margin-bottom: 8px; transition: border-color .2s;
   }
   .markup-input:focus { border-color: var(--accent); }
-  .markup-select {
-    width: 100%; background: var(--bg); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 6px 9px; color: var(--text);
-    font-family: 'IBM Plex Mono', monospace; font-size: 11px; outline: none;
-    margin-bottom: 8px; cursor: pointer;
-  }
 
   .cb-row {
     display: flex; align-items: center; gap: 8px;
@@ -254,10 +206,10 @@
   .draw-btn {
     width: 100%; padding: 8px;
     font-family: 'IBM Plex Mono', monospace; font-size: 11px;
-    border-radius: var(--radius); border: 1px solid color-mix(in srgb, var(--accent2) 50%, transparent);
+    border-radius: var(--radius);
+    border: 1px solid color-mix(in srgb, var(--accent2) 50%, transparent);
     background: color-mix(in srgb, var(--accent2) 10%, transparent);
-    color: var(--accent2); cursor: pointer; margin-bottom: 6px;
-    transition: background .15s;
+    color: var(--accent2); cursor: pointer; margin-bottom: 6px; transition: background .15s;
   }
   .draw-btn:hover { background: color-mix(in srgb, var(--accent2) 18%, transparent); }
   .draw-btn:disabled { opacity: .35; cursor: not-allowed; }
@@ -265,14 +217,13 @@
   .roi-btn {
     width: 100%; padding: 7px;
     font-family: 'IBM Plex Mono', monospace; font-size: 11px;
-    border-radius: var(--radius); border: 1px solid color-mix(in srgb, var(--amber) 40%, transparent);
+    border-radius: var(--radius);
+    border: 1px solid color-mix(in srgb, var(--amber) 40%, transparent);
     background: color-mix(in srgb, var(--amber) 8%, transparent);
-    color: var(--amber); cursor: pointer; margin-bottom: 6px;
-    transition: background .15s;
+    color: var(--amber); cursor: pointer; margin-bottom: 6px; transition: background .15s;
   }
   .roi-btn:hover { background: color-mix(in srgb, var(--amber) 16%, transparent); }
 
-  /* ROI list for multiple traffic lights */
   .roi-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
   .roi-item {
     display: flex; align-items: center; gap: 6px;
@@ -291,8 +242,7 @@
   .hint-box {
     font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--dim);
     background: var(--bg); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 7px 9px; line-height: 1.7;
-    margin-bottom: 10px;
+    border-radius: var(--radius); padding: 7px 9px; line-height: 1.7; margin-bottom: 10px;
   }
 
   .zone-list { display: flex; flex-direction: column; gap: 6px; }
@@ -301,29 +251,27 @@
     border-radius: var(--radius); padding: 8px 10px; font-size: 11px;
   }
   .zi-head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
-  .zi-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .zi-dot  { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
   .zi-name { flex: 1; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text); }
   .zi-type {
     font-size: 9px; padding: 1px 5px; border-radius: 3px;
     background: color-mix(in srgb, var(--dim) 20%, transparent); color: var(--dim);
   }
   .zi-type.crosswalk { background: color-mix(in srgb, var(--amber) 18%, transparent); color: var(--amber); }
-  .zi-meta { font-size: 10px; color: var(--dim); margin-bottom: 5px; }
+  .zi-meta  { font-size: 10px; color: var(--dim); margin-bottom: 5px; }
   .zi-actions { display: flex; gap: 4px; flex-wrap: wrap; }
   .zi-del {
     font-family: 'IBM Plex Mono', monospace; font-size: 10px;
     padding: 2px 8px; border-radius: 3px;
     border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
-    color: var(--warn); background: transparent; cursor: pointer;
-    transition: background .15s;
+    color: var(--warn); background: transparent; cursor: pointer; transition: background .15s;
   }
   .zi-del:hover { background: color-mix(in srgb, var(--warn) 10%, transparent); }
   .zi-roi {
     font-family: 'IBM Plex Mono', monospace; font-size: 10px;
     padding: 2px 8px; border-radius: 3px;
     border: 1px solid color-mix(in srgb, var(--amber) 35%, transparent);
-    color: var(--amber); background: transparent; cursor: pointer;
-    transition: background .15s;
+    color: var(--amber); background: transparent; cursor: pointer; transition: background .15s;
   }
   .zi-roi:hover { background: color-mix(in srgb, var(--amber) 10%, transparent); }
 
@@ -340,7 +288,11 @@
   .cam-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dim); flex-shrink: 0; }
   .cam-item.active .cam-dot { background: var(--accent); }
   .cam-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .cam-cnt { color: var(--dim); font-size: 9px; }
+  .cam-cnt  { color: var(--dim); font-size: 9px; }
+  /* Иконка калибровки */
+  .cam-calib { font-size: 9px; }
+  .cam-calib.ok   { color: var(--accent); }
+  .cam-calib.miss { color: var(--dim); }
 
   .save-notice {
     font-family: 'IBM Plex Mono', monospace; font-size: 10px;
@@ -358,11 +310,26 @@
     border-radius: var(--radius); padding: 10px 12px;
   }
   .stat-card .val {
-    font-family: 'IBM Plex Mono', monospace; font-size: 22px; font-weight: 600;
+    font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 600;
     color: var(--accent); line-height: 1; transition: color .3s;
   }
   .stat-card .lbl { font-size: 10px; color: var(--dim); margin-top: 3px; letter-spacing: .06em; }
   .stat-card.wide { grid-column: span 2; }
+
+  /* Калибровка возраста (нормальный режим) */
+  .calib-card {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 10px 12px; margin-top: 7px;
+    font-family: 'IBM Plex Mono', monospace; font-size: 10px;
+  }
+  .calib-card .calib-title { color: var(--dim); margin-bottom: 5px; }
+  .calib-bar-wrap {
+    height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; margin-bottom: 4px;
+  }
+  .calib-bar { height: 100%; border-radius: 3px; transition: width .5s; background: var(--accent); }
+  .calib-bar.uncalibrated { background: var(--amber); }
+  .calib-bar-label { color: var(--dim); font-size: 9px; }
+
   #sparkline-wrap {
     background: var(--bg); border: 1px solid var(--border);
     border-radius: var(--radius); padding: 8px;
@@ -370,21 +337,24 @@
   canvas#sparkline { width: 100%; height: 56px; display: block; }
   .spark-label { font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: var(--dim); margin-top: 3px; text-align: right; }
 
-  /* ── TL state items ── */
+  /* TL items */
   .tl-item {
     background: var(--bg); border: 1px solid var(--border);
     border-radius: var(--radius); padding: 7px 10px;
     font-family: 'IBM Plex Mono', monospace; font-size: 10px;
   }
-  .tl-item-head {
-    display: flex; align-items: center; gap: 8px;
-  }
-  .tl-dot {
-    width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
-  }
+  .tl-item-head { display: flex; align-items: center; gap: 8px; }
+  .tl-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
   .tl-name { flex: 1; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .tl-state { font-weight: 600; }
   .tl-conf { color: var(--dim); }
+  /* Тип светофора badge */
+  .tl-type-badge {
+    font-size: 8px; padding: 1px 4px; border-radius: 2px;
+    font-family: 'IBM Plex Mono', monospace; letter-spacing: .04em;
+  }
+  .tl-type-badge.pedestrian { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); }
+  .tl-type-badge.vehicle    { background: color-mix(in srgb, var(--warn) 15%, transparent); color: var(--warn); }
   .tl-per-roi {
     margin-top: 5px; padding-top: 5px; border-top: 1px solid var(--border);
     display: flex; flex-wrap: wrap; gap: 4px;
@@ -394,28 +364,25 @@
     border: 1px solid; font-family: 'IBM Plex Mono', monospace;
   }
 
-  /* ── Camera select (normal mode) ── */
+  /* Camera select (normal) */
   .cam-select-wrap select {
     width: 100%; background: var(--bg); border: 1px solid var(--border);
     border-radius: var(--radius); padding: 7px 9px; color: var(--text);
-    font-family: 'IBM Plex Mono', monospace; font-size: 11px; outline: none;
-    cursor: pointer; transition: border-color .2s;
+    font-family: 'IBM Plex Mono', monospace; font-size: 11px; outline: none; cursor: pointer;
   }
   .cam-select-wrap select:focus { border-color: var(--accent); }
   .cam-select-info {
     font-family: 'IBM Plex Mono', monospace; font-size: 10px;
-    color: var(--dim); margin-top: 5px; line-height: 1.6;
-    min-height: 16px; transition: color .3s;
+    color: var(--dim); margin-top: 5px; line-height: 1.6; min-height: 16px; transition: color .3s;
   }
 
-  /* ── Model selector ── */
+  /* Model selector */
   .model-btns { display: flex; gap: 5px; }
   .model-btn {
     flex: 1; padding: 7px 4px; border-radius: var(--radius);
     border: 1px solid var(--border); background: var(--bg);
     color: var(--dim); font-family: 'IBM Plex Mono', monospace;
-    font-size: 11px; font-weight: 600; cursor: pointer;
-    transition: all .2s; text-align: center;
+    font-size: 11px; font-weight: 600; cursor: pointer; transition: all .2s; text-align: center;
   }
   .model-btn:hover { border-color: var(--accent2); color: var(--accent2); }
   .model-btn.active {
@@ -440,11 +407,8 @@
     color: var(--dim); line-height: 1.6;
   }
 
-  /* ── Sliders ── */
-  label {
-    font-size: 11px; color: var(--dim); display: block;
-    font-family: 'IBM Plex Mono', monospace; letter-spacing: .05em;
-  }
+  /* Sliders */
+  label { font-size: 11px; color: var(--dim); display: block; font-family: 'IBM Plex Mono', monospace; letter-spacing: .05em; }
   input[type=range] {
     -webkit-appearance: none; width: 100%; height: 4px;
     border-radius: 2px; background: var(--border); outline: none; margin: 6px 0;
@@ -491,13 +455,13 @@
   }
   select:focus { border-color: var(--accent); }
 
-  #det-log { list-style: none; max-height: 120px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+  #det-log { list-style: none; max-height: 100px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
   #det-log li {
     font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--dim);
     padding: 3px 0; border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
     display: flex; gap: 8px;
   }
-  #det-log li .ts { color: var(--dim); }
+  #det-log li .ts  { color: var(--dim); }
   #det-log li .cnt { color: var(--accent); font-weight: 600; min-width: 24px; text-align: right; }
 
   .footer-note {
@@ -526,21 +490,17 @@
          onload="onFrameLoad()" onerror="onFrameError()" />
     <div class="overlay-src" id="src-overlay">{{source_label}}</div>
     <div id="skip-overlay"></div>
-
     <canvas id="markup-canvas"></canvas>
-
     <div id="markup-toolbar">
       <span class="tb-hint" id="tb-hint-text">кликайте для добавления точек</span>
       <button class="tb-btn green" id="tb-finish" onclick="finishZone()">✓ Готово</button>
-      <button class="tb-btn red"   onclick="cancelDraw()">✕ Отмена</button>
+      <button class="tb-btn red" onclick="cancelDraw()">✕ Отмена</button>
     </div>
   </div>
 
   <aside>
 
-    <!-- ════════════════════════════════════════════════ -->
-    <!-- РЕЖИМ РАЗМЕТКИ                                   -->
-    <!-- ════════════════════════════════════════════════ -->
+    <!-- ════════ РАЗМЕТКА ════════ -->
     <div id="markup-panel">
 
       <div class="section">
@@ -571,14 +531,28 @@
             <label for="has-light" style="margin:0;color:var(--text)">Есть светофор(ы)</label>
           </div>
           <div id="tl-roi-wrap" style="display:none">
-            <div class="hint-box">
-              Добавьте один или несколько ROI светофоров для этого перехода.<br>
-              При конфликте состояний — красный имеет приоритет.
+
+            <!-- ▼▼▼ ТИП СВЕТОФОРА ▼▼▼ -->
+            <div class="section-title" style="margin-bottom:6px">Тип светофора</div>
+            <div class="light-type-btns">
+              <div class="lt-btn active pedestrian" id="lt-pedestrian"
+                   onclick="setLightType('pedestrian')" title="Зелёный = пешеходам идти">
+                🚶 ПЕШЕХОДНЫЙ
+              </div>
+              <div class="lt-btn vehicle" id="lt-vehicle"
+                   onclick="setLightType('vehicle')" title="Красный для машин = пешеходам идти">
+                🚗 АВТО (инверсия)
+              </div>
             </div>
+            <div class="lt-hint" id="lt-hint-text">
+              <b>Пешеходный:</b> зелёный → идти, красный → нарушение.
+            </div>
+            <!-- ▲▲▲ ТИП СВЕТОФОРА ▲▲▲ -->
 
-            <!-- Список добавленных ROI -->
+            <div class="hint-box">
+              Добавьте один или несколько ROI светофоров.
+            </div>
             <div class="roi-list" id="pending-roi-list"></div>
-
             <button class="roi-btn" onclick="startDrawROI(null)">◉ + Добавить ROI светофора</button>
             <div id="roi-info" style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--dim);margin-bottom:8px"></div>
           </div>
@@ -610,12 +584,10 @@
     <!-- /markup-panel -->
 
 
-    <!-- ════════════════════════════════════════════════ -->
-    <!-- НОРМАЛЬНЫЙ РЕЖИМ                                 -->
-    <!-- ════════════════════════════════════════════════ -->
+    <!-- ════════ НОРМАЛЬНЫЙ РЕЖИМ ════════ -->
     <div id="normal-panel">
 
-      <!-- Камера разметки -->
+      <!-- Камера -->
       <div class="section cam-select-wrap">
         <div class="section-title">Камера разметки</div>
         <select id="camera-select" onchange="onCameraSelect(this.value)">
@@ -624,13 +596,25 @@
         <div class="cam-select-info" id="cam-select-info"></div>
       </div>
 
-      <!-- Stats -->
+      <!-- Статистика -->
       <div class="section">
         <div class="section-title">Статистика</div>
         <div class="stat-grid">
           <div class="stat-card">
             <div class="val" id="stat-persons">0</div>
             <div class="lbl">ЛЮДЕЙ</div>
+          </div>
+          <div class="stat-card">
+            <div class="val" id="stat-violations" style="color:var(--warn)">0</div>
+            <div class="lbl">НАРУШЕНИЙ</div>
+          </div>
+          <div class="stat-card" style="border-color:color-mix(in srgb,var(--accent) 30%,transparent)">
+            <div class="val" id="stat-adults">0</div>
+            <div class="lbl">ВЗРОСЛЫХ</div>
+          </div>
+          <div class="stat-card" style="border-color:color-mix(in srgb,#00a5ff 30%,transparent)">
+            <div class="val" id="stat-children" style="color:#00a5ff">0</div>
+            <div class="lbl">ДЕТЕЙ</div>
           </div>
           <div class="stat-card">
             <div class="val" id="stat-fps">—</div>
@@ -640,14 +624,19 @@
             <div class="val" id="stat-ms">—</div>
             <div class="lbl">INFER ms</div>
           </div>
-          <div class="stat-card">
-            <div class="val" id="stat-dfps">—</div>
-            <div class="lbl">DETECT FPS</div>
-          </div>
           <div class="stat-card wide" id="sparkline-wrap">
             <canvas id="sparkline"></canvas>
-            <div class="spark-label">кол-во людей / время</div>
+            <div class="spark-label">людей / время</div>
           </div>
+        </div>
+
+        <!-- Калибровка возраста -->
+        <div class="calib-card" id="age-calib-card">
+          <div class="calib-title">КАЛИБРОВКА ВОЗРАСТА</div>
+          <div class="calib-bar-wrap">
+            <div class="calib-bar uncalibrated" id="calib-bar" style="width:0%"></div>
+          </div>
+          <div class="calib-bar-label" id="calib-bar-label">не загружена</div>
         </div>
       </div>
 
@@ -657,7 +646,7 @@
         <div id="tl-list" style="display:flex;flex-direction:column;gap:5px;"></div>
       </div>
 
-      <!-- Model selector -->
+      <!-- Модель -->
       <div class="section">
         <div class="section-title">Модель YOLOv8</div>
         <div class="model-btns">
@@ -670,24 +659,18 @@
           <span style="color:var(--dim)">активна:</span>
           <span id="active-model-label">yolov8{{model_size}}.pt</span>
         </div>
-        <div class="model-sizes-hint">
-          n=nano · s=small · m=medium · l=large · x=xlarge<br>
-          точность ↑ &nbsp;⟷&nbsp; скорость ↓
-        </div>
+        <div class="model-sizes-hint">n=nano · s=small · m=medium · l=large · x=xlarge</div>
       </div>
 
       <div class="sep"></div>
+
+      <!-- Детекция ON/OFF -->
       <div style="padding: 0 16px; margin-bottom:10px">
         <div class="section-title" style="margin-bottom:8px;padding-top:10px">Режим детекции</div>
-        <button id="detect-toggle-btn"
-                class="full"
-                onclick="toggleDetection()"
+        <button id="detect-toggle-btn" class="full" onclick="toggleDetection()"
                 style="background:color-mix(in srgb, var(--accent) 20%, transparent);
                        border-color:color-mix(in srgb, var(--accent) 50%, transparent);
-                       color:var(--accent);
-                       padding:10px;
-                       font-weight:600;
-                       font-size:12px">
+                       color:var(--accent); padding:10px; font-weight:600; font-size:12px">
           ⏸ DETECT ON
         </button>
         <div style="margin-top:8px;font-size:10px;color:var(--dim);font-family:'IBM Plex Mono',monospace;text-align:center">
@@ -695,41 +678,33 @@
         </div>
       </div>
 
-      <!-- Params -->
+      <!-- Параметры -->
       <div class="section">
         <div class="section-title">Параметры детекции</div>
-
         <div class="range-row">
           <label>Порог уверенности</label>
           <span class="range-val" id="conf-val">{{conf}}</span>
         </div>
         <input type="range" id="conf-slider" min="0.1" max="0.9" step="0.05"
                value="{{conf}}" oninput="onConfChange(this.value)" onchange="applyConf()" />
-
         <div class="gap"></div>
-
         <div class="range-row">
           <label>Размер входа модели</label>
           <span class="range-val" id="imgsz-val">{{imgsz}}</span>
         </div>
         <input type="range" id="imgsz-slider" min="320" max="1920" step="320"
                value="{{imgsz}}" oninput="onImgszChange(this.value)" onchange="applyImgsz()" />
-
         <div class="gap"></div>
-
         <div class="range-row">
           <label>Лимит детекций / мин (FPM)</label>
           <span class="range-val amber" id="fpm-val">{{fpm}}</span>
         </div>
-        <input type="range" class="amber-thumb" id="fpm-slider"
-               min="1" max="300" step="1" value="{{fpm}}"
-               oninput="onFpmChange(this.value)" onchange="applyFpm()" />
-        <div class="fpm-note">
-          анализируется каждый <b id="fpm-skip-note">—</b> кадр(ов) стрима
-        </div>
+        <input type="range" class="amber-thumb" id="fpm-slider" min="1" max="300" step="1"
+               value="{{fpm}}" oninput="onFpmChange(this.value)" onchange="applyFpm()" />
+        <div class="fpm-note">анализируется каждый <b id="fpm-skip-note">—</b> кадр(ов)</div>
       </div>
 
-      <!-- Source -->
+      <!-- Источник -->
       <div class="section">
         <div class="section-title">Источник</div>
         {% if videos %}
@@ -741,15 +716,14 @@
         </select>
         <button class="full" onclick="switchVideo()">▷ Переключить</button>
         {% else %}
-        <input type="text" id="url-input" value="{{ source_url }}"
-               placeholder="rtsp:// или http://...m3u8" />
+        <input type="text" id="url-input" value="{{ source_url }}" placeholder="rtsp://..." />
         <div style="margin-top:8px">
           <button class="full" onclick="reloadSource()">⟳ Перезапустить поток</button>
         </div>
         {% endif %}
       </div>
 
-      <!-- Log -->
+      <!-- Лог -->
       <div class="section">
         <div class="section-title">Лог детекций</div>
         <ul id="det-log"></ul>
@@ -789,6 +763,30 @@ function drawSparkline() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// Калибровка возраста
+// ══════════════════════════════════════════════════════════════════════════
+async function updateAgeCalib() {
+  try {
+    const d   = await fetch('/age_calibration_status').then(r => r.json());
+    const bar = document.getElementById('calib-bar');
+    const lbl = document.getElementById('calib-bar-label');
+
+    if (d.calibrated && d.calib_info && d.calib_info.percent > 0) {
+      const pct = d.calib_info.percent;
+      bar.style.width = pct + '%';
+      bar.classList.remove('uncalibrated');
+      lbl.textContent = `${pct}% (${d.calib_info.ready_bands}/${d.calib_info.total_bands} зон, ${d.calib_info.total_samples} наблюд.)`;
+    } else {
+      bar.style.width = '0%';
+      bar.classList.add('uncalibrated');
+      lbl.textContent = d.camera_id
+        ? `нет калибровки для камеры "${d.camera_id}"`
+        : 'камера не выбрана';
+    }
+  } catch(e) {}
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // Камеры (нормальный режим)
 // ══════════════════════════════════════════════════════════════════════════
 let _loadedCameras = {};
@@ -801,36 +799,34 @@ async function loadCameras() {
     const cur = sel.value;
     sel.innerHTML = '<option value="">— камера не выбрана —</option>';
     for (const [id, info] of Object.entries(_loadedCameras)) {
-      const opt = document.createElement('option');
-      opt.value       = id;
-      opt.textContent = `${id}  (${info.zones_count} зон)`;
+      const opt      = document.createElement('option');
+      opt.value      = id;
+      const calib    = info.age_calibrated ? ' ✓кал' : '';
+      opt.textContent = `${id}  (${info.zones_count} зон${calib})`;
       if (id === cur) opt.selected = true;
       sel.appendChild(opt);
     }
-  } catch(e) { /* zones.json ещё нет */ }
+  } catch(e) {}
 }
 
 async function onCameraSelect(camId) {
   const info = document.getElementById('cam-select-info');
-
   try {
-    // Отправляем ВСЕГДА — в том числе при выборе пустого значения (сброс)
     const r = await post('/set_camera', { camera_id: camId });
     const d = await r.json();
     if (d.ok) {
       if (!camId) {
         info.textContent = '— зоны сброшены —';
         info.style.color = 'var(--amber)';
-        setTimeout(() => {
-          info.textContent = '';
-          info.style.color = 'var(--dim)';
-        }, 2000);
+        setTimeout(() => { info.textContent=''; info.style.color='var(--dim)'; }, 2000);
       } else {
         const cam = _loadedCameras[camId] || {};
-        info.textContent  = `✓ Загружено: ${cam.zones_count ?? '?'} зон`;
-        info.style.color  = 'var(--accent)';
-        setTimeout(() => { info.style.color = 'var(--dim)'; }, 2500);
+        const calibTxt = cam.age_calibrated ? '  ✓ калибровка OK' : '  ⚠ калибровка отсутствует';
+        info.textContent = `✓ ${cam.zones_count ?? '?'} зон${calibTxt}`;
+        info.style.color = cam.age_calibrated ? 'var(--accent)' : 'var(--amber)';
+        setTimeout(() => { info.style.color='var(--dim)'; }, 3000);
       }
+      updateAgeCalib();
     }
   } catch(e) {
     info.textContent = 'Ошибка переключения';
@@ -839,8 +835,6 @@ async function onCameraSelect(camId) {
 }
 
 function syncCameraSelect(serverId) {
-  // Синхронизируем только если сервер вернул ненулевой camera_id
-  // (null означает «камера сброшена» — не перезаписываем выбор пользователя)
   if (!serverId) return;
   const sel = document.getElementById('camera-select');
   if (sel.value === serverId) return;
@@ -850,22 +844,33 @@ function syncCameraSelect(serverId) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// Светофоры
+// Светофоры (нормальный режим)
 // ══════════════════════════════════════════════════════════════════════════
 const TL_COLORS = {
-  green:   '#00c853',
-  red:     '#e53935',
-  yellow:  '#ffab00',
-  unknown: '#607d8b',
-  grace:   '#26a69a',
+  green:            '#00c853',
+  red:              '#e53935',
+  yellow:           '#ffab00',
+  unknown:          '#607d8b',
+  grace:            '#26a69a',
+  vehicle_allowed:  '#00c85a',
 };
 const TL_LABELS = {
-  green:   'ЗЕЛЁНЫЙ',
-  red:     'КРАСНЫЙ',
-  yellow:  'ЖЁЛТЫЙ',
-  unknown: '?',
-  grace:   'GRACE',
+  green:            'ЗЕЛЁНЫЙ',
+  red:              'КРАСНЫЙ',
+  yellow:           'ЖЁЛТЫЙ',
+  unknown:          '?',
+  grace:            'GRACE',
+  vehicle_allowed:  'АВТ.КР→МОЖНО',
 };
+
+function tlDisplayKey(st) {
+  const lt      = st.light_type || 'pedestrian';
+  const state   = st.state || 'unknown';
+  const allowed = st.pedestrian_allowed || st.green_grace || false;
+  if (lt === 'vehicle') return allowed ? 'vehicle_allowed' : state;
+  if (st.green_grace && state !== 'green') return 'grace';
+  return state;
+}
 
 async function updateTLStates() {
   if (markupMode) return;
@@ -874,43 +879,43 @@ async function updateTLStates() {
     const entries = Object.entries(states);
     const section = document.getElementById('tl-section');
     const list    = document.getElementById('tl-list');
-
-    if (!entries.length) { section.style.display = 'none'; return; }
-    section.style.display = '';
+    if (!entries.length) { section.style.display='none'; return; }
+    section.style.display='';
 
     list.innerHTML = entries.map(([zid, st]) => {
-      const key   = (st.green_grace && st.state !== 'green') ? 'grace' : st.state;
+      const key   = tlDisplayKey(st);
       const color = TL_COLORS[key]  || TL_COLORS.unknown;
       const lbl   = TL_LABELS[key] || '?';
-      const conf  = Math.round((st.confidence || 0) * 100);
+      const conf  = Math.round((st.confidence || 0)*100);
+      const lt    = st.light_type || 'pedestrian';
+      const ltLbl = lt === 'vehicle' ? 'АВТО' : 'ПЕШ';
+      const ltCls = lt === 'vehicle' ? 'vehicle' : 'pedestrian';
 
-      // per_roi badges (несколько светофоров)
       const perRoi = st.per_roi || [];
       const roiBadges = perRoi.length > 1
         ? `<div class="tl-per-roi">` +
-          perRoi.map((r, i) => {
+          perRoi.map((r,i) => {
             const rk  = r.state || 'unknown';
             const rc  = TL_COLORS[rk] || TL_COLORS.unknown;
             const rl  = TL_LABELS[rk] || '?';
-            const rpct = Math.round((r.confidence || 0) * 100);
-            return `<span class="tl-roi-badge" style="color:${rc};border-color:${rc}44">` +
-                   `#${i+1} ${rl} ${rpct}%</span>`;
-          }).join('') +
-          `</div>`
+            const rp  = Math.round((r.confidence||0)*100);
+            return `<span class="tl-roi-badge" style="color:${rc};border-color:${rc}44">#${i+1} ${rl} ${rp}%</span>`;
+          }).join('') + `</div>`
         : '';
 
       return `
         <div class="tl-item">
           <div class="tl-item-head">
             <span class="tl-dot" style="background:${color};box-shadow:0 0 5px ${color}88"></span>
-            <span class="tl-name" title="${zid}">${zid.slice(0, 20)}</span>
+            <span class="tl-name" title="${zid}">${zid.slice(0,18)}</span>
+            <span class="tl-type-badge ${ltCls}">${ltLbl}</span>
             <span class="tl-state" style="color:${color}">${lbl}</span>
             <span class="tl-conf">${conf}%</span>
           </div>
           ${roiBadges}
         </div>`;
     }).join('');
-  } catch(e) { /* нет данных */ }
+  } catch(e) {}
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -925,10 +930,12 @@ async function pollStats() {
     const d = await fetch('/stats').then(r => r.json());
     errCount = 0;
 
-    document.getElementById('stat-persons').textContent = d.persons ?? 0;
-    document.getElementById('stat-fps').textContent     = d.fps  ? d.fps.toFixed(1)  : '—';
-    document.getElementById('stat-ms').textContent      = d.ms   ? d.ms.toFixed(0)   : '—';
-    document.getElementById('stat-dfps').textContent    = d.dfps ? d.dfps.toFixed(1) : '—';
+    document.getElementById('stat-persons').textContent    = d.persons   ?? 0;
+    document.getElementById('stat-violations').textContent = d.violations ?? 0;
+    document.getElementById('stat-adults').textContent     = d.adults     ?? 0;
+    document.getElementById('stat-children').textContent   = d.children   ?? 0;
+    document.getElementById('stat-fps').textContent        = d.fps  ? d.fps.toFixed(1)  : '—';
+    document.getElementById('stat-ms').textContent         = d.ms   ? d.ms.toFixed(0)   : '—';
     history.push(d.persons ?? 0); history.shift(); drawSparkline();
     if ((d.persons ?? 0) > 0) addLogEntry(d.persons, d.ts);
 
@@ -936,22 +943,21 @@ async function pollStats() {
     const loading = d.model_loading;
     document.getElementById('active-model-label').textContent = `yolov8${loaded}.pt`;
     const badge = document.getElementById('model-badge');
-    if (loading) { badge.textContent = `ЗАГРУЗКА ${loading.toUpperCase()}…`; badge.classList.add('loading'); }
-    else         { badge.textContent = `MODEL: ${loaded.toUpperCase()}`;      badge.classList.remove('loading'); }
+    if (loading) { badge.textContent=`ЗАГРУЗКА ${loading.toUpperCase()}…`; badge.classList.add('loading'); }
+    else         { badge.textContent=`MODEL: ${loaded.toUpperCase()}`;      badge.classList.remove('loading'); }
     ['n','s','m','l','x'].forEach(sz => {
       const btn = document.getElementById(`mbtn-${sz}`);
       if (!btn) return;
-      if (loading) btn.className = 'model-btn' + (sz === loading ? ' loading-btn' : '');
-      else         btn.className = 'model-btn' + (sz === loaded  ? ' active'      : '');
+      if (loading) btn.className='model-btn'+(sz===loading?' loading-btn':'');
+      else         btn.className='model-btn'+(sz===loaded ?' active':'');
     });
 
     const skip = d.frame_skip ?? 1;
     document.getElementById('fpm-skip-note').textContent = skip;
     const ov = document.getElementById('skip-overlay');
-    if (skip > 1) { ov.style.display='block'; ov.textContent=`детекция: 1 из ${skip} кадров`; }
-    else          { ov.style.display='none'; }
+    if (skip>1) { ov.style.display='block'; ov.textContent=`детекция: 1 из ${skip} кадров`; }
+    else        { ov.style.display='none'; }
 
-    // Синхронизируем выбор камеры (только если сервер вернул ненулевое значение)
     if (d.camera_id) syncCameraSelect(d.camera_id);
 
     setStatus(
@@ -959,7 +965,7 @@ async function pollStats() {
       loading ? `ЗАГРУЗКА yolov8${loading}…` : `LIVE · ${(d.source_type||'').slice(0,32)}`
     );
   } catch {
-    if (++errCount > 3) setStatus('error','НЕТ СИГНАЛА');
+    if (++errCount>3) setStatus('error','НЕТ СИГНАЛА');
   }
 }
 
@@ -969,7 +975,7 @@ function addLogEntry(cnt, ts) {
   const t   = ts ? new Date(ts*1000).toLocaleTimeString('ru') : '—';
   li.innerHTML = `<span class="ts">${t}</span><span class="cnt">${cnt}</span><span>чел.</span>`;
   log.prepend(li);
-  while (log.children.length > 40) log.removeChild(log.lastChild);
+  while (log.children.length>40) log.removeChild(log.lastChild);
 }
 
 function setStatus(s, text) {
@@ -985,284 +991,238 @@ function onFrameError() { setStatus('error','НЕТ СИГНАЛА'); }
 function onConfChange(v)  { document.getElementById('conf-val').textContent  = parseFloat(v).toFixed(2); }
 function onImgszChange(v) { document.getElementById('imgsz-val').textContent = v; }
 function onFpmChange(v)   { document.getElementById('fpm-val').textContent   = v; }
-async function applyConf()  { await post('/set_params', { conf:  parseFloat(document.getElementById('conf-slider').value) }); }
-async function applyImgsz() { await post('/set_params', { imgsz: parseInt(document.getElementById('imgsz-slider').value)  }); }
-async function applyFpm()   { await post('/set_params', { fpm:   parseInt(document.getElementById('fpm-slider').value)    }); }
+async function applyConf()  { await post('/set_params', {conf:  parseFloat(document.getElementById('conf-slider').value)}); }
+async function applyImgsz() { await post('/set_params', {imgsz: parseInt(document.getElementById('imgsz-slider').value)}); }
+async function applyFpm()   { await post('/set_params', {fpm:   parseInt(document.getElementById('fpm-slider').value)}); }
 
 async function switchModel(sz) {
   ['n','s','m','l','x'].forEach(s => {
     const b = document.getElementById(`mbtn-${s}`);
-    if (b) b.className = 'model-btn' + (s===sz ? ' loading-btn' : '');
+    if (b) b.className = 'model-btn'+(s===sz?' loading-btn':'');
   });
-  setStatus('loading', `ЗАГРУЗКА yolov8${sz}…`);
-  await post('/set_model', { model: sz });
+  setStatus('loading',`ЗАГРУЗКА yolov8${sz}…`);
+  await post('/set_model', {model: sz});
 }
-
 async function reloadSource() {
   const url = document.getElementById('url-input')?.value?.trim();
   if (!url) return;
   document.getElementById('src-overlay').textContent = url;
-  await post('/set_source', { url });
+  await post('/set_source', {url});
 }
-
 async function switchVideo() {
   const v = document.getElementById('video-select')?.value;
   if (!v) return;
   document.getElementById('src-overlay').textContent = v;
-  await post('/set_source', { video: v });
+  await post('/set_source', {video: v});
 }
-
 async function post(url, body) {
-  return fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  return fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// ██████████████   РЕЖИМ РАЗМЕТКИ   ██████████████
+// Detect ON/OFF
 // ══════════════════════════════════════════════════════════════════════════
+let detectEnabled = true;
+async function toggleDetection() {
+  detectEnabled = !detectEnabled;
+  const btn  = document.getElementById('detect-toggle-btn');
+  const stxt = document.getElementById('detect-status-text');
+  if (detectEnabled) {
+    btn.innerHTML = '⏸ DETECT ON';
+    btn.style.cssText = 'background:color-mix(in srgb,var(--accent) 20%,transparent);border-color:color-mix(in srgb,var(--accent) 50%,transparent);color:var(--accent);padding:10px;font-weight:600;font-size:12px;width:100%';
+    stxt.textContent = 'Детекция активна'; stxt.style.color='var(--accent)';
+  } else {
+    btn.innerHTML = '▶ DETECT OFF';
+    btn.style.cssText = 'background:color-mix(in srgb,var(--amber) 15%,transparent);border-color:color-mix(in srgb,var(--amber) 50%,transparent);color:var(--amber);padding:10px;font-weight:600;font-size:12px;width:100%';
+    stxt.textContent = 'Детекция выключена'; stxt.style.color='var(--amber)';
+  }
+  await fetch('/toggle_detect', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({enabled:detectEnabled})});
+}
 
+// ══════════════════════════════════════════════════════════════════════════
+// ██ РЕЖИМ РАЗМЕТКИ ██
+// ══════════════════════════════════════════════════════════════════════════
 let zonesDB      = { cameras: {} };
 let currentCamId = null;
 let drawState    = {
   mode: null, points: [], roiStart: null, roiEnd: null,
-  zoneType: 'road', editRoiForZoneId: null,
+  zoneType: 'road', lightType: 'pedestrian', editRoiForZoneId: null,
 };
-
-// Список ROI для новой зоны (поддержка нескольких светофоров)
 let pendingROIs = [];
 
 const mc = document.getElementById('markup-canvas');
 const mx = mc.getContext('2d');
+const ZONE_COLORS = { road: [0,80,220], crosswalk: [220,150,0] };
 
-const ZONE_COLORS = { road: [0, 80, 220], crosswalk: [220, 150, 0] };
+function genId() { return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
 
-function genId() {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2,6);
-}
-
-// ── Загрузка / сохранение ──────────────────────────────────────────────────
 async function loadZonesFromServer() {
   try {
     const r = await fetch('/zones');
-    if (r.ok) { zonesDB = await r.json(); }
+    if (r.ok) zonesDB = await r.json();
   } catch(e) {}
-  // Убеждаемся, что структура всегда содержит cameras
-  if (!zonesDB || !zonesDB.cameras) zonesDB = { cameras: {} };
+  if (!zonesDB || !zonesDB.cameras) zonesDB = {cameras:{}};
   renderCamList();
 }
-
 async function saveZonesToServer() {
   try {
-    await fetch('/zones', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify(zonesDB),
-    });
-    showSaveNotice();
-    loadCameras();
+    await fetch('/zones', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(zonesDB)});
+    showSaveNotice(); loadCameras();
   } catch(e) { showSaveNotice(); }
 }
-
 function showSaveNotice() {
   const el = document.getElementById('save-notice');
   el.classList.add('visible');
   setTimeout(() => el.classList.remove('visible'), 2000);
 }
 
-// ── Переключение режима ────────────────────────────────────────────────────
+// ── Переключение режима ──────────────────────────────────────────────────────
 function toggleMarkupMode() {
   markupMode = !markupMode;
   const btn = document.getElementById('btn-markup-toggle');
   const mp  = document.getElementById('markup-panel');
   const np  = document.getElementById('normal-panel');
-
   if (markupMode) {
-    btn.classList.add('active');
-    btn.textContent = '◧ РАЗМЕТКА ВКЛ';
-    mp.classList.add('visible');
-    np.style.display = 'none';
-    mc.style.display = 'block';
-    loadZonesFromServer();
-    startCanvasLoop();
-    setStatus('loading', 'РЕЖИМ РАЗМЕТКИ');
+    btn.classList.add('active'); btn.textContent='◧ РАЗМЕТКА ВКЛ';
+    mp.classList.add('visible'); np.style.display='none';
+    mc.style.display='block';
+    loadZonesFromServer(); startCanvasLoop();
+    setStatus('loading','РЕЖИМ РАЗМЕТКИ');
   } else {
-    btn.classList.remove('active');
-    btn.textContent = '◧ РАЗМЕТКА';
-    mp.classList.remove('visible');
-    np.style.display = '';
-    mc.style.display = 'none';
-    mc.classList.remove('active');
+    btn.classList.remove('active'); btn.textContent='◧ РАЗМЕТКА';
+    mp.classList.remove('visible'); np.style.display='';
+    mc.style.display='none'; mc.classList.remove('active');
     document.getElementById('markup-toolbar').classList.remove('visible');
-    cancelDraw();
-    setStatus('live', 'LIVE');
+    cancelDraw(); setStatus('live','LIVE');
   }
 }
 
-// ── Синхронизация canvas с изображением ───────────────────────────────────
 function syncMarkupCanvas() {
   const img = document.getElementById('stream');
   const r   = img.getBoundingClientRect();
   const pr  = document.getElementById('videoPane').getBoundingClientRect();
-  mc.style.left = (r.left - pr.left) + 'px';
-  mc.style.top  = (r.top  - pr.top)  + 'px';
-  mc.width      = r.width;
-  mc.height     = r.height;
+  mc.style.left=`${r.left-pr.left}px`; mc.style.top=`${r.top-pr.top}px`;
+  mc.width=r.width; mc.height=r.height;
 }
 new ResizeObserver(syncMarkupCanvas).observe(document.getElementById('stream'));
 document.getElementById('stream').addEventListener('load', syncMarkupCanvas);
 setTimeout(syncMarkupCanvas, 800);
 
-// ── Canvas loop ────────────────────────────────────────────────────────────
 let canvasLoopRunning = false;
 function startCanvasLoop() {
   if (canvasLoopRunning) return;
   canvasLoopRunning = true;
   function loop() {
-    if (!markupMode) { canvasLoopRunning = false; return; }
-    syncMarkupCanvas();
-    renderMarkupCanvas();
-    requestAnimationFrame(loop);
+    if (!markupMode) { canvasLoopRunning=false; return; }
+    syncMarkupCanvas(); renderMarkupCanvas(); requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
 }
 
 function renderMarkupCanvas() {
-  mx.clearRect(0, 0, mc.width, mc.height);
+  mx.clearRect(0,0,mc.width,mc.height);
   drawExistingZones();
-  if (drawState.mode === 'polygon') drawCurrentPolygon();
-  if (drawState.mode === 'roi')     drawCurrentROI();
-  // Рисуем уже добавленные pending ROI
+  if (drawState.mode==='polygon') drawCurrentPolygon();
+  if (drawState.mode==='roi')     drawCurrentROI();
   drawPendingROIs();
 }
 
-function toCanvas(nx, ny) { return [nx * mc.width, ny * mc.height]; }
-function toNorm(cx, cy)   { return [cx / mc.width,  cy / mc.height]; }
+function toCanvas(nx,ny) { return [nx*mc.width, ny*mc.height]; }
+function toNorm(cx,cy)   { return [cx/mc.width,  cy/mc.height]; }
+
+function normalizeRois(raw) {
+  if (!raw||!raw.length) return [];
+  if (typeof raw[0]==='number') return [raw];
+  return raw;
+}
 
 function drawExistingZones() {
   if (!currentCamId) return;
   const cam = zonesDB.cameras[currentCamId];
   if (!cam) return;
-
   for (const z of cam.zones) {
-    if (!z.polygon || z.polygon.length < 2) continue;
-    const pts = z.polygon.map(([x,y]) => toCanvas(x,y));
-    const [r,g,b] = z.color || ZONE_COLORS[z.type] || [100,100,200];
-
-    mx.beginPath();
-    mx.moveTo(pts[0][0], pts[0][1]);
-    for (let i=1;i<pts.length;i++) mx.lineTo(pts[i][0], pts[i][1]);
+    if (!z.polygon||z.polygon.length<2) continue;
+    const pts   = z.polygon.map(([x,y])=>toCanvas(x,y));
+    const [r,g,b] = z.color||ZONE_COLORS[z.type]||[100,100,200];
+    mx.beginPath(); mx.moveTo(pts[0][0],pts[0][1]);
+    for (let i=1;i<pts.length;i++) mx.lineTo(pts[i][0],pts[i][1]);
     mx.closePath();
-    mx.fillStyle   = `rgba(${r},${g},${b},0.22)`;
-    mx.strokeStyle = `rgba(${r},${g},${b},0.9)`;
-    mx.lineWidth   = 2;
-    mx.fill();
-    mx.stroke();
-
+    mx.fillStyle=`rgba(${r},${g},${b},0.22)`;
+    mx.strokeStyle=`rgba(${r},${g},${b},0.9)`; mx.lineWidth=2;
+    mx.fill(); mx.stroke();
     for (const [px,py] of pts) {
       mx.beginPath(); mx.arc(px,py,4,0,Math.PI*2);
-      mx.fillStyle = `rgb(${r},${g},${b})`;
-      mx.fill();
+      mx.fillStyle=`rgb(${r},${g},${b})`; mx.fill();
     }
+    const cx=pts.reduce((s,p)=>s+p[0],0)/pts.length;
+    const cy=pts.reduce((s,p)=>s+p[1],0)/pts.length;
+    mx.font='600 12px IBM Plex Mono,monospace'; mx.fillStyle=`rgba(${r},${g},${b},1)`;
+    mx.shadowColor='rgba(0,0,0,0.8)'; mx.shadowBlur=4; mx.textAlign='center';
+    // Добавляем тип светофора к подписи
+    let lbl = z.label;
+    if (z.has_light && z.light_type==='vehicle') lbl += ' [А]';
+    mx.fillText(lbl, cx, cy);
+    mx.shadowBlur=0; mx.textAlign='left';
 
-    const cx = pts.reduce((s,p)=>s+p[0],0)/pts.length;
-    const cy = pts.reduce((s,p)=>s+p[1],0)/pts.length;
-    mx.font      = '600 12px IBM Plex Mono, monospace';
-    mx.fillStyle = `rgba(${r},${g},${b},1)`;
-    mx.shadowColor = 'rgba(0,0,0,0.8)'; mx.shadowBlur = 4;
-    mx.textAlign = 'center';
-    mx.fillText(z.label, cx, cy);
-    mx.shadowBlur = 0; mx.textAlign = 'left';
-
-    // Рисуем все ROI зоны
-    const rois = normalizeRois(z.traffic_light_roi);
-    rois.forEach((roi, idx) => {
+    normalizeRois(z.traffic_light_roi).forEach((roi,idx) => {
       const [rx,ry,rw,rh] = roi;
-      const [cx1,cy1] = toCanvas(rx, ry);
-      const cw = rw * mc.width;
-      const ch = rh * mc.height;
-      mx.strokeStyle = '#ffaa00'; mx.lineWidth = 1.5;
-      mx.setLineDash([4,3]);
-      mx.strokeRect(cx1, cy1, cw, ch);
+      const [cx1,cy1] = toCanvas(rx,ry);
+      mx.strokeStyle='#ffaa00'; mx.lineWidth=1.5; mx.setLineDash([4,3]);
+      mx.strokeRect(cx1, cy1, rw*mc.width, rh*mc.height);
       mx.setLineDash([]);
-      mx.font = '10px IBM Plex Mono'; mx.fillStyle = '#ffaa00';
-      mx.fillText(rois.length > 1 ? `TL#${idx+1}` : 'TL', cx1+3, cy1-4);
+      const roiLbl = (z.light_type==='vehicle'?'[А] ':'')+(normalizeRois(z.traffic_light_roi).length>1?`TL#${idx+1}`:'TL');
+      mx.font='10px IBM Plex Mono'; mx.fillStyle='#ffaa00';
+      mx.fillText(roiLbl, cx1+3, cy1-4);
     });
   }
 }
 
-function normalizeRois(raw) {
-  if (!raw || !raw.length) return [];
-  if (typeof raw[0] === 'number') return [raw];
-  return raw;
-}
-
 function drawPendingROIs() {
-  pendingROIs.forEach((roi, idx) => {
+  pendingROIs.forEach((roi,idx) => {
     const [x,y,w,h] = roi;
-    const [cx1,cy1] = toCanvas(x, y);
-    const cw = w * mc.width;
-    const ch = h * mc.height;
-    mx.strokeStyle = '#ff8800'; mx.lineWidth = 2;
-    mx.setLineDash([]);
-    mx.strokeRect(cx1, cy1, cw, ch);
-    mx.fillStyle = 'rgba(255,136,0,0.1)';
-    mx.fillRect(cx1, cy1, cw, ch);
-    mx.font = '11px IBM Plex Mono'; mx.fillStyle = '#ff8800';
+    const [cx1,cy1] = toCanvas(x,y);
+    mx.strokeStyle='#ff8800'; mx.lineWidth=2; mx.setLineDash([]);
+    mx.strokeRect(cx1, cy1, w*mc.width, h*mc.height);
+    mx.fillStyle='rgba(255,136,0,0.1)';
+    mx.fillRect(cx1, cy1, w*mc.width, h*mc.height);
+    mx.font='11px IBM Plex Mono'; mx.fillStyle='#ff8800';
     mx.fillText(`TL#${idx+1}`, cx1+3, cy1+14);
   });
 }
 
 function drawCurrentPolygon() {
-  const pts = drawState.points.map(([x,y]) => toCanvas(x,y));
+  const pts = drawState.points.map(([x,y])=>toCanvas(x,y));
   if (!pts.length) return;
-  mx.beginPath(); mx.moveTo(pts[0][0], pts[0][1]);
-  for (let i=1;i<pts.length;i++) mx.lineTo(pts[i][0], pts[i][1]);
-  mx.strokeStyle = '#00b8ff'; mx.lineWidth = 1.5;
-  mx.setLineDash([5,3]); mx.stroke(); mx.setLineDash([]);
+  mx.beginPath(); mx.moveTo(pts[0][0],pts[0][1]);
+  for (let i=1;i<pts.length;i++) mx.lineTo(pts[i][0],pts[i][1]);
+  mx.strokeStyle='#00b8ff'; mx.lineWidth=1.5; mx.setLineDash([5,3]); mx.stroke(); mx.setLineDash([]);
   for (const [px,py] of pts) {
     mx.beginPath(); mx.arc(px,py,5,0,Math.PI*2);
-    mx.fillStyle = '#00b8ff'; mx.fill();
-    mx.strokeStyle='#000'; mx.lineWidth=1; mx.stroke();
+    mx.fillStyle='#00b8ff'; mx.fill(); mx.strokeStyle='#000'; mx.lineWidth=1; mx.stroke();
   }
 }
 
 function drawCurrentROI() {
-  if (!drawState.roiStart || !drawState.roiEnd) return;
+  if (!drawState.roiStart||!drawState.roiEnd) return;
   const [x1,y1] = toCanvas(...drawState.roiStart);
   const [x2,y2] = toCanvas(...drawState.roiEnd);
-  mx.strokeStyle = '#ffaa00'; mx.lineWidth = 1.5;
-  mx.setLineDash([4,3]);
-  mx.strokeRect(x1, y1, x2-x1, y2-y1);
-  mx.setLineDash([]);
+  mx.strokeStyle='#ffaa00'; mx.lineWidth=1.5; mx.setLineDash([4,3]);
+  mx.strokeRect(x1,y1,x2-x1,y2-y1); mx.setLineDash([]);
 }
 
-// ── Обработчики мыши ──────────────────────────────────────────────────────
-mc.addEventListener('click', e => {
-  if (drawState.mode !== 'polygon') return;
-  drawState.points.push(toNorm(e.offsetX, e.offsetY));
-});
-mc.addEventListener('dblclick', e => {
-  if (drawState.mode === 'polygon') { e.preventDefault(); finishZone(); }
-});
-mc.addEventListener('mousedown', e => {
-  if (drawState.mode !== 'roi') return;
-  drawState.roiStart = toNorm(e.offsetX, e.offsetY);
-  drawState.roiEnd   = drawState.roiStart;
-});
-mc.addEventListener('mousemove', e => {
-  if (drawState.mode !== 'roi' || !drawState.roiStart) return;
-  drawState.roiEnd = toNorm(e.offsetX, e.offsetY);
-});
-mc.addEventListener('mouseup', e => {
-  if (drawState.mode !== 'roi' || !drawState.roiStart) return;
-  drawState.roiEnd = toNorm(e.offsetX, e.offsetY);
-  finishROI();
-});
+// ── Обработчики мыши ─────────────────────────────────────────────────────────
+mc.addEventListener('click',     e => { if (drawState.mode==='polygon') drawState.points.push(toNorm(e.offsetX,e.offsetY)); });
+mc.addEventListener('dblclick',  e => { if (drawState.mode==='polygon'){e.preventDefault();finishZone();} });
+mc.addEventListener('mousedown', e => { if (drawState.mode!=='roi') return; drawState.roiStart=toNorm(e.offsetX,e.offsetY); drawState.roiEnd=drawState.roiStart; });
+mc.addEventListener('mousemove', e => { if (drawState.mode!=='roi'||!drawState.roiStart) return; drawState.roiEnd=toNorm(e.offsetX,e.offsetY); });
+mc.addEventListener('mouseup',   e => { if (drawState.mode!=='roi'||!drawState.roiStart) return; drawState.roiEnd=toNorm(e.offsetX,e.offsetY); finishROI(); });
 document.addEventListener('keydown', e => {
   if (!markupMode) return;
-  if (e.key === 'Enter') { if (drawState.mode === 'polygon') finishZone(); }
-  if (e.key === 'Escape') cancelDraw();
+  if (e.key==='Enter') { if (drawState.mode==='polygon') finishZone(); }
+  if (e.key==='Escape') cancelDraw();
 });
 
-// ── Тип зоны ──────────────────────────────────────────────────────────────
+// ── Тип зоны ─────────────────────────────────────────────────────────────────
 function setZoneType(type) {
   drawState.zoneType = type;
   document.getElementById('zt-road').classList.toggle('active',      type==='road');
@@ -1270,57 +1230,58 @@ function setZoneType(type) {
   document.getElementById('cw-extra').style.display = type==='crosswalk' ? '' : 'none';
 }
 
+// ── Тип светофора ─────────────────────────────────────────────────────────────
+const LT_HINTS = {
+  pedestrian: '<b>Пешеходный:</b> зелёный → идти, красный → нарушение.',
+  vehicle:    '<b>Авто (инверсия):</b> красный/жёлтый для машин → пешеходам идти.<br>Зелёный для машин → пешеходам СТОП.',
+};
+
+function setLightType(lt) {
+  drawState.lightType = lt;
+  document.getElementById('lt-pedestrian').classList.toggle('active', lt==='pedestrian');
+  document.getElementById('lt-vehicle').classList.toggle('active',    lt==='vehicle');
+  document.getElementById('lt-hint-text').innerHTML = LT_HINTS[lt] || '';
+}
+
 document.getElementById('has-light').addEventListener('change', function() {
   document.getElementById('tl-roi-wrap').style.display = this.checked ? '' : 'none';
-  if (!this.checked) {
-    pendingROIs = [];
-    renderPendingRoiList();
-  }
+  if (!this.checked) { pendingROIs=[]; renderPendingRoiList(); }
 });
 
-// ── Рендер списка pending ROI ──────────────────────────────────────────────
 function renderPendingRoiList() {
   const el = document.getElementById('pending-roi-list');
-  if (!pendingROIs.length) {
-    el.innerHTML = '';
-    return;
-  }
-  el.innerHTML = pendingROIs.map((roi, idx) => `
+  el.innerHTML = pendingROIs.map((roi,idx) => `
     <div class="roi-item">
       <span class="roi-item-label">ROI #${idx+1}: [${roi.map(v=>v.toFixed(3)).join(', ')}]</span>
-      <button class="roi-item-del" onclick="removePendingRoi(${idx})" title="Удалить ROI">✕</button>
-    </div>
-  `).join('');
+      <button class="roi-item-del" onclick="removePendingRoi(${idx})">✕</button>
+    </div>`).join('');
 }
 
 function removePendingRoi(idx) {
-  pendingROIs.splice(idx, 1);
-  renderPendingRoiList();
-  document.getElementById('roi-info').textContent =
-    pendingROIs.length ? `${pendingROIs.length} ROI добавлено` : '';
+  pendingROIs.splice(idx,1); renderPendingRoiList();
+  document.getElementById('roi-info').textContent = pendingROIs.length?`${pendingROIs.length} ROI добавлено`:'';
 }
 
-// ── Полигон ───────────────────────────────────────────────────────────────
+// ── Полигон ───────────────────────────────────────────────────────────────────
 function startDrawZone() {
   if (!currentCamId) { alert('Сначала выберите или добавьте камеру'); return; }
-  drawState.mode   = 'polygon';
-  drawState.points = [];
+  drawState.mode='polygon'; drawState.points=[];
   mc.classList.add('active');
   document.getElementById('markup-toolbar').classList.add('visible');
-  document.getElementById('tb-hint-text').textContent = 'кликайте → точки  |  Enter / двойной клик — завершить';
-  document.getElementById('btn-start-draw').disabled  = true;
+  document.getElementById('tb-hint-text').textContent='кликайте → точки  |  Enter — завершить';
+  document.getElementById('btn-start-draw').disabled=true;
 }
 
 function finishZone() {
-  if (drawState.points.length < 3) { alert('Минимум 3 точки'); return; }
-  const label    = document.getElementById('new-zone-label').value.trim() || 'Зона';
+  if (drawState.points.length<3) { alert('Минимум 3 точки'); return; }
+  const label    = document.getElementById('new-zone-label').value.trim()||'Зона';
   const type     = drawState.zoneType;
   const hasLight = type==='crosswalk' && document.getElementById('has-light').checked;
+  const lightType = drawState.lightType || 'pedestrian';
 
-  // traffic_light_roi: null | [x,y,w,h] | [[x,y,w,h], ...]
   let roiValue = null;
   if (hasLight && pendingROIs.length) {
-    roiValue = pendingROIs.length === 1 ? pendingROIs[0] : pendingROIs.slice();
+    roiValue = pendingROIs.length===1 ? pendingROIs[0] : pendingROIs.slice();
   }
 
   const zone = {
@@ -1329,199 +1290,149 @@ function finishZone() {
     color:             ZONE_COLORS[type],
     has_light:         hasLight,
     traffic_light_roi: roiValue,
+    light_type:        lightType,
   };
 
   if (!zonesDB.cameras[currentCamId])
-    zonesDB.cameras[currentCamId] = { label: currentCamId, zones: [] };
+    zonesDB.cameras[currentCamId]={label:currentCamId, zones:[]};
   zonesDB.cameras[currentCamId].zones.push(zone);
-  saveZonesToServer();
-  renderZoneList();
-  renderCamList();
+  saveZonesToServer(); renderZoneList(); renderCamList();
 
-  // Сбросить pending ROI и форму
-  pendingROIs = [];
-  renderPendingRoiList();
-  document.getElementById('roi-info').textContent = '';
-
-  const n = zonesDB.cameras[currentCamId].zones.length + 1;
-  document.getElementById('new-zone-label').value = `Зона ${n}`;
+  pendingROIs=[]; renderPendingRoiList();
+  document.getElementById('roi-info').textContent='';
+  const n = zonesDB.cameras[currentCamId].zones.length+1;
+  document.getElementById('new-zone-label').value=`Зона ${n}`;
   cancelDraw();
 }
 
 function cancelDraw() {
-  drawState.mode    = null;
-  drawState.points  = [];
-  drawState.roiStart = null;
-  drawState.roiEnd   = null;
+  drawState.mode=null; drawState.points=[];
+  drawState.roiStart=null; drawState.roiEnd=null;
   mc.classList.remove('active');
   document.getElementById('markup-toolbar').classList.remove('visible');
-  document.getElementById('btn-start-draw').disabled = false;
+  document.getElementById('btn-start-draw').disabled=false;
 }
 
-// ── ROI светофора ──────────────────────────────────────────────────────────
+// ── ROI светофора ─────────────────────────────────────────────────────────────
 function startDrawROI(zoneId) {
-  drawState.mode             = 'roi';
-  drawState.editRoiForZoneId = zoneId || null;
-  drawState.roiStart         = null;
-  drawState.roiEnd           = null;
+  drawState.mode='roi'; drawState.editRoiForZoneId=zoneId||null;
+  drawState.roiStart=null; drawState.roiEnd=null;
   mc.classList.add('active');
   document.getElementById('markup-toolbar').classList.add('visible');
-  document.getElementById('tb-hint-text').textContent = 'нарисуйте прямоугольник вокруг светофора';
-  document.getElementById('tb-finish').style.display  = 'none';
+  document.getElementById('tb-hint-text').textContent='нарисуйте прямоугольник вокруг светофора';
+  document.getElementById('tb-finish').style.display='none';
 }
 
 function finishROI() {
-  if (!drawState.roiStart || !drawState.roiEnd) return;
-  const [x1,y1] = drawState.roiStart;
-  const [x2,y2] = drawState.roiEnd;
-
-  // Игнорируем слишком маленькие прямоугольники (случайный клик)
-  if (Math.abs(x2-x1) < 0.01 || Math.abs(y2-y1) < 0.01) {
-    cancelDrawROI();
-    return;
-  }
-
-  const roi = [Math.min(x1,x2), Math.min(y1,y2), Math.abs(x2-x1), Math.abs(y2-y1)];
+  if (!drawState.roiStart||!drawState.roiEnd) return;
+  const [x1,y1]=drawState.roiStart; const [x2,y2]=drawState.roiEnd;
+  if (Math.abs(x2-x1)<0.01||Math.abs(y2-y1)<0.01) { cancelDrawROI(); return; }
+  const roi=[Math.min(x1,x2),Math.min(y1,y2),Math.abs(x2-x1),Math.abs(y2-y1)];
 
   if (drawState.editRoiForZoneId) {
-    // Редактирование существующей зоны — добавляем ROI к списку
-    const cam = zonesDB.cameras[currentCamId];
+    const cam=zonesDB.cameras[currentCamId];
     if (cam) {
-      const z = cam.zones.find(z => z.id === drawState.editRoiForZoneId);
+      const z=cam.zones.find(z=>z.id===drawState.editRoiForZoneId);
       if (z) {
-        z.has_light = true;
-        const existing = normalizeRois(z.traffic_light_roi);
-        existing.push(roi);
-        // Храним: 1 ROI — плоский массив, несколько — массив массивов
-        z.traffic_light_roi = existing.length === 1 ? existing[0] : existing;
+        z.has_light=true;
+        const ex=normalizeRois(z.traffic_light_roi); ex.push(roi);
+        z.traffic_light_roi=ex.length===1?ex[0]:ex;
       }
     }
-    saveZonesToServer();
-    renderZoneList();
+    saveZonesToServer(); renderZoneList();
   } else {
-    // Новая зона — добавляем в pending
-    pendingROIs.push(roi);
-    renderPendingRoiList();
-    document.getElementById('roi-info').textContent =
-      `${pendingROIs.length} ROI добавлено. Можно добавить ещё.`;
+    pendingROIs.push(roi); renderPendingRoiList();
+    document.getElementById('roi-info').textContent=`${pendingROIs.length} ROI. Можно добавить ещё.`;
   }
-
   cancelDrawROI();
 }
 
 function cancelDrawROI() {
-  drawState.mode     = null;
-  drawState.roiStart = null;
-  drawState.roiEnd   = null;
+  drawState.mode=null; drawState.roiStart=null; drawState.roiEnd=null;
   mc.classList.remove('active');
   document.getElementById('markup-toolbar').classList.remove('visible');
-  document.getElementById('tb-finish').style.display = '';
+  document.getElementById('tb-finish').style.display='';
 }
 
-// ── Удаление ROI из существующей зоны ─────────────────────────────────────
 function deleteZoneRoi(zoneId, roiIdx) {
-  const cam = zonesDB.cameras[currentCamId];
-  if (!cam) return;
-  const z = cam.zones.find(z => z.id === zoneId);
-  if (!z) return;
-  const rois = normalizeRois(z.traffic_light_roi);
-  rois.splice(roiIdx, 1);
-  if (rois.length === 0) {
-    z.traffic_light_roi = null;
-    z.has_light = false;
-  } else if (rois.length === 1) {
-    z.traffic_light_roi = rois[0];
-  } else {
-    z.traffic_light_roi = rois;
-  }
-  saveZonesToServer();
-  renderZoneList();
+  const cam=zonesDB.cameras[currentCamId]; if (!cam) return;
+  const z=cam.zones.find(z=>z.id===zoneId); if (!z) return;
+  const rois=normalizeRois(z.traffic_light_roi);
+  rois.splice(roiIdx,1);
+  if (!rois.length) { z.traffic_light_roi=null; z.has_light=false; }
+  else if (rois.length===1) z.traffic_light_roi=rois[0];
+  else z.traffic_light_roi=rois;
+  saveZonesToServer(); renderZoneList();
 }
 
-// ── Камеры (режим разметки) ────────────────────────────────────────────────
+// ── Камеры (режим разметки) ───────────────────────────────────────────────────
 function addCamera() {
-  const input = document.getElementById('new-cam-id');
-  const id    = input.value.trim();
-  if (!id) return;
-  if (!zonesDB.cameras[id]) zonesDB.cameras[id] = { label: id, zones: [] };
-  input.value = '';
-  selectCamera(id);
-  saveZonesToServer();
-  renderCamList();
+  const input=document.getElementById('new-cam-id');
+  const id=input.value.trim(); if (!id) return;
+  if (!zonesDB.cameras[id]) zonesDB.cameras[id]={label:id, zones:[]};
+  input.value=''; selectCamera(id); saveZonesToServer(); renderCamList();
 }
-
 function selectCamera(id) {
-  currentCamId = id;
-  document.getElementById('zones-cam-label').textContent = id;
-  renderCamList();
-  renderZoneList();
+  currentCamId=id;
+  document.getElementById('zones-cam-label').textContent=id;
+  renderCamList(); renderZoneList();
 }
-
 function renderCamList() {
   const el   = document.getElementById('cam-list');
-  const cams = Object.keys(zonesDB.cameras || {});
+  const cams = Object.keys(zonesDB.cameras||{});
   if (!cams.length) {
-    el.innerHTML = '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--dim)">Камер нет</div>';
+    el.innerHTML='<div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--dim)">Камер нет</div>';
     return;
   }
-  el.innerHTML = cams.map(id => {
-    const cam    = zonesDB.cameras[id];
-    const cnt    = cam.zones ? cam.zones.length : 0;
-    const active = id === currentCamId ? ' active' : '';
+  el.innerHTML=cams.map(id => {
+    const cam=zonesDB.cameras[id]; const cnt=cam.zones?cam.zones.length:0;
+    const active=id===currentCamId?' active':'';
     return `
       <div class="cam-item${active}" onclick="selectCamera('${id}')">
         <div class="cam-dot"></div>
         <span class="cam-name">${id}</span>
         <span class="cam-cnt">${cnt} зон</span>
         <span onclick="event.stopPropagation();deleteCamera('${id}')"
-              style="color:var(--warn);cursor:pointer;font-size:12px;padding:0 2px"
-              title="Удалить камеру">✕</span>
+              style="color:var(--warn);cursor:pointer;font-size:12px;padding:0 2px">✕</span>
       </div>`;
   }).join('');
 }
-
 function deleteCamera(id) {
-  if (!confirm(`Удалить камеру "${id}" и все её зоны?`)) return;
+  if (!confirm(`Удалить камеру "${id}"?`)) return;
   delete zonesDB.cameras[id];
-  if (currentCamId === id) {
-    currentCamId = null;
-    document.getElementById('zones-cam-label').textContent = '';
-  }
-  saveZonesToServer();
-  renderCamList();
-  renderZoneList();
+  if (currentCamId===id) { currentCamId=null; document.getElementById('zones-cam-label').textContent=''; }
+  saveZonesToServer(); renderCamList(); renderZoneList();
 }
 
-// ── Список зон ────────────────────────────────────────────────────────────
+// ── Список зон ────────────────────────────────────────────────────────────────
 function renderZoneList() {
-  const el = document.getElementById('zone-list');
-  if (!currentCamId || !zonesDB.cameras[currentCamId]) {
-    el.innerHTML = '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--dim)">Выберите камеру</div>';
+  const el=document.getElementById('zone-list');
+  if (!currentCamId||!zonesDB.cameras[currentCamId]) {
+    el.innerHTML='<div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--dim)">Выберите камеру</div>';
     return;
   }
-  const zones = zonesDB.cameras[currentCamId].zones || [];
+  const zones=zonesDB.cameras[currentCamId].zones||[];
   if (!zones.length) {
-    el.innerHTML = '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--dim)">Зон нет — нарисуйте первую</div>';
+    el.innerHTML='<div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--dim)">Зон нет</div>';
     return;
   }
-  el.innerHTML = zones.map(z => {
-    const [r,g,b] = z.color || [100,100,200];
-    const rois    = normalizeRois(z.traffic_light_roi);
+  el.innerHTML=zones.map(z => {
+    const [r,g,b]=z.color||[100,100,200];
+    const rois=normalizeRois(z.traffic_light_roi);
+    const ltLabel=z.light_type==='vehicle'?'🚗 АВТО (инверсия)':'🚶 ПЕШЕХОДНЫЙ';
 
-    // Список ROI с кнопкой удаления каждого
-    const roiItems = rois.map((roi, idx) => `
+    const roiItems=rois.map((roi,idx)=>`
       <div class="roi-item" style="margin-bottom:3px">
         <span class="roi-item-label">ROI #${idx+1}: [${roi.map(v=>v.toFixed(3)).join(', ')}]</span>
-        <button class="roi-item-del" onclick="deleteZoneRoi('${z.id}', ${idx})" title="Удалить ROI">✕</button>
-      </div>
-    `).join('');
+        <button class="roi-item-del" onclick="deleteZoneRoi('${z.id}',${idx})">✕</button>
+      </div>`).join('');
 
-    const tlSection = z.has_light
-      ? `<div class="zi-meta">
-           <span style="color:var(--amber)">🚦 ${rois.length} светофор(а)</span>
-           <div class="roi-list" style="margin-top:4px">${roiItems}</div>
-         </div>`
-      : '';
+    const tlSection=z.has_light?`
+      <div class="zi-meta">
+        <span style="color:var(--amber)">🚦 ${ltLabel}  ·  ${rois.length} ROI</span>
+        <div class="roi-list" style="margin-top:4px">${roiItems}</div>
+      </div>`:
+      (z.type==='crosswalk'?'<div class="zi-meta" style="color:var(--dim);font-size:10px">без светофора</div>':'');
 
     return `
       <div class="zone-item">
@@ -1533,9 +1444,7 @@ function renderZoneList() {
         ${tlSection}
         <div class="zi-actions">
           <button class="zi-del" onclick="deleteZone('${z.id}')">✕ Удалить</button>
-          ${z.type==='crosswalk'
-            ? `<button class="zi-roi" onclick="startDrawROI('${z.id}')">◉ + ROI</button>`
-            : ''}
+          ${z.type==='crosswalk'?`<button class="zi-roi" onclick="startDrawROI('${z.id}')">◉ + ROI</button>`:''}
         </div>
       </div>`;
   }).join('');
@@ -1543,61 +1452,19 @@ function renderZoneList() {
 
 function deleteZone(id) {
   if (!currentCamId) return;
-  const cam = zonesDB.cameras[currentCamId];
-  if (!cam) return;
-  cam.zones = cam.zones.filter(z => z.id !== id);
-  saveZonesToServer();
-  renderZoneList();
-  renderCamList();
+  const cam=zonesDB.cameras[currentCamId]; if (!cam) return;
+  cam.zones=cam.zones.filter(z=>z.id!==id);
+  saveZonesToServer(); renderZoneList(); renderCamList();
 }
 
-// ── Экспорт ────────────────────────────────────────────────────────────────
+// ── Экспорт ───────────────────────────────────────────────────────────────────
 function downloadZonesJSON() {
-  const blob = new Blob([JSON.stringify(zonesDB, null, 2)], {type:'application/json'});
-  const a    = document.createElement('a');
-  a.href     = URL.createObjectURL(blob);
-  a.download = 'zones.json';
-  a.click();
+  const blob=new Blob([JSON.stringify(zonesDB,null,2)],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='zones.json'; a.click();
 }
-
 function copyZonesJSON() {
-  navigator.clipboard.writeText(JSON.stringify(zonesDB, null, 2))
-    .then(() => showSaveNotice())
-    .catch(() => alert('Не удалось скопировать'));
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-// DETECT ON/OFF toggle
-// ══════════════════════════════════════════════════════════════════════════
-let detectEnabled = true;
-
-async function toggleDetection() {
-  detectEnabled = !detectEnabled;
-
-  const btn        = document.getElementById('detect-toggle-btn');
-  const statusText = document.getElementById('detect-status-text');
-
-  if (detectEnabled) {
-    btn.innerHTML = '⏸ DETECT ON';
-    btn.style.background    = 'color-mix(in srgb, var(--accent) 20%, transparent)';
-    btn.style.borderColor   = 'color-mix(in srgb, var(--accent) 50%, transparent)';
-    btn.style.color         = 'var(--accent)';
-    statusText.textContent  = 'Детекция активна';
-    statusText.style.color  = 'var(--accent)';
-  } else {
-    btn.innerHTML = '▶ DETECT OFF';
-    btn.style.background    = 'color-mix(in srgb, var(--amber) 15%, transparent)';
-    btn.style.borderColor   = 'color-mix(in srgb, var(--amber) 50%, transparent)';
-    btn.style.color         = 'var(--amber)';
-    statusText.textContent  = 'Детекция выключена (только разметка)';
-    statusText.style.color  = 'var(--amber)';
-  }
-
-  await fetch('/toggle_detect', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({enabled: detectEnabled})
-  });
+  navigator.clipboard.writeText(JSON.stringify(zonesDB,null,2))
+    .then(()=>showSaveNotice()).catch(()=>alert('Не удалось скопировать'));
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -1605,10 +1472,10 @@ async function toggleDetection() {
 // ══════════════════════════════════════════════════════════════════════════
 drawSparkline();
 loadCameras();
-setInterval(pollStats,      700);
+setInterval(pollStats,       700);
 setInterval(updateTLStates, 1200);
-pollStats();
-updateTLStates();
+setInterval(updateAgeCalib, 5000);
+pollStats(); updateTLStates(); updateAgeCalib();
 </script>
 </body>
 </html>
