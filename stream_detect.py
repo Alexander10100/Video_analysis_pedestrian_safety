@@ -26,6 +26,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from report_generator import get_collector, get_report_generator
 from stream_detect_web import create_app
 
 from age_classifier      import AgeClassifier, AgeTracker, BboxEMA
@@ -40,6 +41,9 @@ from zone_manager        import ZoneManager
 zone_mgr    = ZoneManager()
 tl_analyzer = TrafficLightAnalyzer()
 viol_det    = ViolationDetector(zone_mgr, tl_analyzer)
+
+# Коллектор нарушений для генерации отчетов
+violation_collector = get_collector()
 
 # ── AgeClassifier — создаётся/пересоздаётся при смене камеры ─────────────────
 _age_clf:  AgeClassifier | None = None
@@ -330,6 +334,20 @@ def detect_and_analyze(
             )
 
     violations        = viol_det.analyze(norm_boxes) if norm_boxes else []
+
+  # Сбор нарушений для отчетов
+violation_collector.set_frame_number(0)  
+for pv in violations:
+    if pv.violation != "none":
+        violation_collector.add_violation(
+            track_id=pv.track_id,
+            violation_type=pv.violation,
+            zone_label=pv.zone_label,
+            age_label="adult",  
+            confidence=pv.conf,
+            bbox=pv.box,
+            note=pv.note,
+        )
     annotated, vcount = draw_violations(annotated, violations, fw, fh)
 
     # Состояния светофоров поверх всего
