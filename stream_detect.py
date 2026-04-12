@@ -333,21 +333,24 @@ def detect_and_analyze(
                 f"BboxEMA={evicted_ema}, AgeTracker={evicted_tracker} треков удалено"
             )
 
-    violations        = viol_det.analyze(norm_boxes) if norm_boxes else []
-
-  # Сбор нарушений для отчетов
-violation_collector.set_frame_number(0)  
-for pv in violations:
-    if pv.violation != "none":
-        violation_collector.add_violation(
-            track_id=pv.track_id,
-            violation_type=pv.violation,
-            zone_label=pv.zone_label,
-            age_label="adult",  
-            confidence=pv.conf,
-            bbox=pv.box,
-            note=pv.note,
-        )
+    # ── Анализ нарушений ──────────────────────────────────────────────────────
+    violations = viol_det.analyze(norm_boxes) if norm_boxes else []
+    
+    # ── Сбор нарушений для отчетов ────────────────────────────────────────────
+    violation_collector.set_frame_number(frame_idx)
+    for pv in violations:
+        if pv.violation != "none":
+            violation_collector.add_violation(
+                track_id=pv.track_id,
+                violation_type=pv.violation,
+                zone_label=pv.zone_label,
+                age_label=pv.age_label,  # Используем реальный age_label из pv
+                confidence=pv.conf,
+                bbox=pv.box,
+                note=pv.note,
+            )
+    
+    # ── Отрисовка нарушений ───────────────────────────────────────────────────
     annotated, vcount = draw_violations(annotated, violations, fw, fh)
 
     # Состояния светофоров поверх всего
@@ -361,7 +364,10 @@ for pv in violations:
         state["children"]   = children_cnt
 
     _draw_legend(annotated, persons, elapsed_ms, vcount, adults_cnt, children_cnt)
+    
     return annotated, persons, elapsed_ms
+
+    
 
 
 def _draw_legend(
