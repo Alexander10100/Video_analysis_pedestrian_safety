@@ -145,12 +145,73 @@
   }
   .stat-card .lbl { font-size: 10px; color: var(--dim); margin-top: 3px; letter-spacing: .06em; }
   .stat-card.wide { grid-column: span 2; }
+  
+  /* Нарушения карточка */
+  .stat-card .val.warn { color: var(--warn); }
+  
   #sparkline-wrap {
     background: var(--bg); border: 1px solid var(--border);
     border-radius: var(--radius); padding: 8px;
   }
   canvas#sparkline { width: 100%; height: 56px; display: block; }
   .spark-label { font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: var(--dim); margin-top: 3px; text-align: right; }
+
+  /* ── Reports section ── */
+  .reports-stats {
+    display: flex; gap: 8px; margin-bottom: 10px;
+  }
+  .reports-stats .stat-badge {
+    flex: 1; background: var(--bg); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 6px 8px; text-align: center;
+  }
+  .reports-stats .stat-badge .num {
+    font-family: 'IBM Plex Mono', monospace; font-size: 16px; font-weight: 600;
+    color: var(--warn);
+  }
+  .reports-stats .stat-badge .txt {
+    font-size: 9px; color: var(--dim); text-transform: uppercase; letter-spacing: .05em;
+  }
+  
+  .report-controls {
+    display: flex; gap: 5px; margin-bottom: 8px; flex-wrap: wrap;
+  }
+  .report-controls select, .report-controls button {
+    flex: 1; min-width: 70px;
+  }
+  .report-controls button {
+    padding: 7px 8px; font-size: 10px;
+  }
+  
+  #reports-list {
+    max-height: 200px; overflow-y: auto; scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 6px;
+    margin-top: 8px;
+  }
+  .report-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 8px; border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+    font-family: 'IBM Plex Mono', monospace; font-size: 10px;
+  }
+  .report-item:last-child { border-bottom: none; }
+  .report-item .name {
+    color: var(--text); max-width: 140px; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap;
+  }
+  .report-item .size { color: var(--dim); font-size: 9px; margin: 0 5px; }
+  .report-item .actions { display: flex; gap: 4px; }
+  .report-item .actions button {
+    padding: 2px 6px; font-size: 9px; background: transparent;
+    border-color: var(--border); color: var(--dim);
+  }
+  .report-item .actions button:hover { color: var(--accent); border-color: var(--accent); }
+  .report-item .actions button.delete:hover { color: var(--warn); border-color: var(--warn); }
+  
+  .empty-reports {
+    text-align: center; padding: 15px; color: var(--dim);
+    font-family: 'IBM Plex Mono', monospace; font-size: 10px;
+  }
 
   /* ── Model selector ── */
   .model-btns { display: flex; gap: 5px; }
@@ -212,12 +273,12 @@
   .fpm-note b { color: var(--amber); }
 
   /* Source */
-  input[type=text] {
+  input[type=text], select {
     width: 100%; background: var(--bg); border: 1px solid var(--border);
     border-radius: var(--radius); padding: 7px 10px; color: var(--text);
     font-family: 'IBM Plex Mono', monospace; font-size: 11px; outline: none; transition: border-color .2s;
   }
-  input[type=text]:focus { border-color: var(--accent); }
+  input[type=text]:focus, select:focus { border-color: var(--accent); }
   button {
     background: color-mix(in srgb, var(--accent) 15%, transparent);
     color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
@@ -228,13 +289,13 @@
   button:hover { background: color-mix(in srgb, var(--accent) 25%, transparent); }
   button:active { transform: scale(.97); }
   button.full { width: 100%; }
-  select {
-    width: 100%; background: var(--bg); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 7px 10px; color: var(--text);
-    font-family: 'IBM Plex Mono', monospace; font-size: 11px; outline: none;
-    margin-bottom: 8px; cursor: pointer;
+  
+  button.warn {
+    background: color-mix(in srgb, var(--warn) 15%, transparent);
+    color: var(--warn);
+    border-color: color-mix(in srgb, var(--warn) 40%, transparent);
   }
-  select:focus { border-color: var(--accent); }
+  button.warn:hover { background: color-mix(in srgb, var(--warn) 25%, transparent); }
 
   /* Log */
   #det-log { list-style: none; max-height: 120px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
@@ -245,12 +306,21 @@
   }
   #det-log li .ts { color: var(--dim); }
   #det-log li .cnt { color: var(--accent); font-weight: 600; min-width: 24px; text-align: right; }
+  #det-log li .cnt.warn { color: var(--warn); }
 
   .footer-note {
     padding: 10px 16px; font-size: 10px; color: var(--dim);
     font-family: 'IBM Plex Mono', monospace; letter-spacing: .04em; margin-top: auto;
   }
   .gap { height: 10px; }
+  
+  /* Loading indicator */
+  .loading-spinner {
+    display: inline-block; width: 12px; height: 12px;
+    border: 2px solid var(--border); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin .6s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
@@ -293,6 +363,22 @@
         <div class="stat-card">
           <div class="val" id="stat-dfps">—</div>
           <div class="lbl">DETECT FPS</div>
+        </div>
+        <div class="stat-card">
+          <div class="val warn" id="stat-violations">0</div>
+          <div class="lbl">НАРУШЕНИЙ</div>
+        </div>
+        <div class="stat-card">
+          <div class="val" id="stat-adults">0</div>
+          <div class="lbl">ВЗРОСЛЫХ</div>
+        </div>
+        <div class="stat-card">
+          <div class="val" id="stat-children">0</div>
+          <div class="lbl">ДЕТЕЙ</div>
+        </div>
+        <div class="stat-card">
+          <div class="val" id="stat-camera">—</div>
+          <div class="lbl">КАМЕРА</div>
         </div>
         <div class="stat-card wide" id="sparkline-wrap">
           <canvas id="sparkline"></canvas>
@@ -354,6 +440,51 @@
       </div>
     </div>
 
+    <!-- Reports -->
+    <div class="section">
+      <div class="section-title"> Отчеты о нарушениях</div>
+      
+      <div class="reports-stats">
+        <div class="stat-badge">
+          <div class="num" id="report-total-violations">0</div>
+          <div class="txt">всего</div>
+        </div>
+        <div class="stat-badge">
+          <div class="num" id="report-recent-violations">0</div>
+          <div class="txt">за 5 мин</div>
+        </div>
+      </div>
+      
+      <div class="report-controls">
+        <select id="report-interval">
+          <option value="5">5 мин</option>
+          <option value="15">15 мин</option>
+          <option value="30" selected>30 мин</option>
+          <option value="60">60 мин</option>
+          <option value="90">90 мин</option>
+        </select>
+        <select id="report-format">
+          <option value="json">JSON</option>
+          <option value="txt" selected>TXT</option>
+          <option value="csv">CSV</option>
+        </select>
+      </div>
+      
+      <div style="display: flex; gap: 5px; margin-bottom: 8px;">
+        <button onclick="generateReport()" style="flex: 2;"> Сгенерировать</button>
+        <button onclick="generateMultipleReports()" style="flex: 1;" title="30/60/90 минут"> Все</button>
+      </div>
+      
+      <div style="display: flex; gap: 5px;">
+        <button onclick="loadReportsList()" style="flex: 1;"> Обновить</button>
+        <button onclick="downloadAllReports()" style="flex: 1;" class="warn">Скачать все</button>
+      </div>
+      
+      <div id="reports-list">
+        <div class="empty-reports">Загрузка списка...</div>
+      </div>
+    </div>
+
     <!-- Source -->
     <div class="section">
       <div class="section-title">Источник</div>
@@ -410,6 +541,7 @@ function drawSparkline() {
 
 // ── Stats polling ──────────────────────────────────────────────────────────
 let errCount = 0;
+let totalViolations = 0;
 
 async function pollStats() {
   try {
@@ -420,11 +552,19 @@ async function pollStats() {
     document.getElementById('stat-fps').textContent     = d.fps  ? d.fps.toFixed(1)  : '—';
     document.getElementById('stat-ms').textContent      = d.ms   ? d.ms.toFixed(0)   : '—';
     document.getElementById('stat-dfps').textContent    = d.dfps ? d.dfps.toFixed(1) : '—';
+    document.getElementById('stat-violations').textContent = d.violations ?? 0;
+    document.getElementById('stat-adults').textContent     = d.adults ?? 0;
+    document.getElementById('stat-children').textContent   = d.children ?? 0;
+    document.getElementById('stat-camera').textContent     = d.camera_id ? d.camera_id.slice(0, 8) : '—';
+    
+    totalViolations = d.violations ?? 0;
 
     history.push(d.persons ?? 0); history.shift(); drawSparkline();
-    if ((d.persons ?? 0) > 0) addLogEntry(d.persons, d.ts);
+    if ((d.persons ?? 0) > 0 || (d.violations ?? 0) > 0) {
+      addLogEntry(d.persons, d.violations, d.ts);
+    }
 
-    // ── Model badge & buttons ──
+    // Model badge & buttons
     const loaded  = d.model_size;
     const loading = d.model_loading;
 
@@ -448,7 +588,7 @@ async function pollStats() {
       }
     });
 
-    // ── FPM skip overlay ──
+    // FPM skip overlay
     const skip = d.frame_skip ?? 1;
     document.getElementById('fpm-skip-note').textContent = skip;
     const ov = document.getElementById('skip-overlay');
@@ -459,16 +599,20 @@ async function pollStats() {
       loading ? 'loading' : 'live',
       loading ? `ЗАГРУЗКА yolov8${loading}…` : `LIVE · ${(d.source_type||'').slice(0,32)}`
     );
+    
+    // Update reports stats
+    updateReportsStats();
   } catch {
     if (++errCount > 3) setStatus('error','НЕТ СИГНАЛА');
   }
 }
 
-function addLogEntry(cnt, ts) {
+function addLogEntry(cnt, viol, ts) {
   const log = document.getElementById('det-log');
   const li  = document.createElement('li');
   const t   = ts ? new Date(ts*1000).toLocaleTimeString('ru') : '—';
-  li.innerHTML = `<span class="ts">${t}</span><span class="cnt">${cnt}</span><span>чел.</span>`;
+  const violSpan = viol > 0 ? `<span class="cnt warn">${viol}</span><span style="color:var(--warn)">⚠️</span>` : '';
+  li.innerHTML = `<span class="ts">${t}</span><span class="cnt">${cnt}</span><span>чел.</span>${violSpan}`;
   log.prepend(li);
   while (log.children.length > 40) log.removeChild(log.lastChild);
 }
@@ -513,13 +657,37 @@ async function switchVideo() {
   await post('/set_source', { video: v });
 }
 
-async function post(url, body) {
-  return fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+// ── Reports ────────────────────────────────────────────────────────────────
+async function updateReportsStats() {
+  try {
+    const d = await fetch('/reports/stats/current').then(r => r.json());
+    document.getElementById('report-total-violations').textContent = totalViolations;
+    document.getElementById('report-recent-violations').textContent = d.total_violations || 0;
+  } catch (e) {
+    console.error('Stats error:', e);
+  }
 }
 
-drawSparkline();
-setInterval(pollStats, 700);
-pollStats();
-</script>
-</body>
-</html>
+async function generateReport() {
+  const interval = document.getElementById('report-interval').value;
+  const format = document.getElementById('report-format').value;
+  
+  const btn = event.target;
+  const origText = btn.textContent;
+  btn.textContent = ' Генерация...';
+  btn.disabled = true;
+  
+  try {
+    const response = await fetch('/reports/generate', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({interval: parseInt(interval), format})
+    });
+    
+    const data = await response.json();
+    if (data.ok) {
+      const stats = data.stats;
+      alert(`Отчет создан!\n\n` +
+            `Файл: ${data.filename}\n` +
+            `Период: ${interval} мин\n` +
+            `Нарушителей: ${stats
