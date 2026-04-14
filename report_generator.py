@@ -58,14 +58,15 @@ def load_violations(camera_id: str | None = None,
 
 
 def generate_report(violations: list, output: str, camera_id: str | None = None):
-    """Генерирует JSON-отчёт по нарушениям."""
+    """Генерирует JSON-отчёт с учётом track_id (уникальные нарушители)"""
     if not violations:
         print("[INFO] За указанный период нарушений не найдено.")
-        # Создаём пустой отчёт
         empty_report = {
             "generated_at": datetime.now().isoformat(),
             "camera_id": camera_id or "all",
             "total_violations": 0,
+            "unique_persons": 0,
+            "confidence": {"average": 0.0, "min": 0.0, "max": 0.0},
             "summary": {"by_type": {}, "by_zone": {}, "by_age": {}},
             "timeline": [],
             "raw_violations": []
@@ -78,23 +79,44 @@ def generate_report(violations: list, output: str, camera_id: str | None = None)
     by_type = defaultdict(int)
     by_zone = defaultdict(int)
     by_age = defaultdict(int)
+    unique_tracks = set()          # ← для подсчёта уникальных людей
+    confidence_stats = []
+
     timeline = defaultdict(lambda: defaultdict(int))
 
     for v in violations:
+        tid = v.get("track_id")
+        if tid is not None:
+            unique_tracks.add(tid)
+
         vt = v["violation_type"]
         by_type[vt] += 1
         by_zone[v["zone_label"]] += 1
         by_age[v.get("age_label", "unknown")] += 1
 
-        # Группировка по минутам
+        if "person_conf" in v:
+            confidence_stats.append(v["person_conf"])
+
+        # timeline по минутам
         dt = datetime.fromisoformat(v["timestamp"])
         minute = dt.replace(second=0, microsecond=0).isoformat()
         timeline[minute][vt] += 1
+
+    # Статистика по уверенности
+    avg_conf = sum(confidence_stats) / len(confidence_stats) if confidence_stats else 0.0
+    min_conf = min(confidence_stats) if confidence_stats else 0.0
+    max_conf = max(confidence_stats) if confidence_stats else 0.0
 
     report = {
         "generated_at": datetime.now().isoformat(),
         "camera_id": camera_id or "all",
         "total_violations": len(violations),
+        "unique_persons": len(unique_tracks),           # ← самое важное добавление
+        "confidence": {
+            "average": round(avg_conf, 3),
+            "min": round(min_conf, 3),
+            "max": round(max_conf, 3)
+        },
         "summary": {
             "by_type": dict(by_type),
             "by_zone": dict(by_zone),
@@ -108,8 +130,22 @@ def generate_report(violations: list, output: str, camera_id: str | None = None)
             }
             for ts, counts in sorted(timeline.items())
         ],
-        "raw_violations": violations  # полный список для детального анализа
+        "raw_violations": violations
     }
+
+    Path(output).parent.mkdir(parents=True, exist_ok=True)
+    with open(output, "w", encoding="utf-8") as f:
+        json.dump(report, f, ensure_ascii=False, indent=2)
+
+    # Вывод в консоль
+    print(f"\n[✓] Отчёт сохранён → {output}")
+    print(f"   Камера                  : {camera_id or 'Все камеры'}")
+    print(f"   Всего записей нарушений : {report['total_violations']}")
+    print(f"   Уникальных нарушителей  : {report['unique_persons']}")
+    print(f"   Средняя уверенность     : {report['confidence']['average']:.1%}")
+    print(f"   Типы нарушений:")
+    for t, cnt in sorted(report["summary"]["by_type"].items(), key=lambda x: x[1], reverse=True):
+        print(f"     • {t:15} : {cnt}")
 
     # Сохраняем отчёт
     Path(output).parent.mkdir(parents=True, exist_ok=True)
