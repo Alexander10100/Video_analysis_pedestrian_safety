@@ -60,39 +60,59 @@ _bbox_ema = BboxEMA(alpha=0.35)
 # Счётчик кадров для периодической чистки мёртвых треков
 _evict_every = 150   # кадров
 
-
-# ── Логгер нарушений для отчётов ─────────────────────────────────────────────
+# ── Логирование нарушений для отчётов ───────────────────────────────────────
 VIOLATION_LOG = Path("violations_log.jsonl")
 _violation_log_lock = threading.Lock()
 
+# Защита от повторных нарушений одного и того же человека
+_violation_cooldown: dict[int, float] = {}
+COOLDOWN_SECONDS = 10        # секунд между логированиями одного track_id
+
 def log_violations(camera_id: str, violation_list: list, ts: float):
-    """Записывает каждое нарушение в JSONL-файл (одна строка — одно нарушение)."""
     if not violation_list:
         return
 
     timestamp_str = datetime.fromtimestamp(ts).isoformat()
+    current_time = ts
+    new_entries = []
 
-    entries = []
     for v in violation_list:
         if v.violation == "none":
             continue
+
+        tid = getattr(v, 'track_id', -1)   
+
+        if tid < 0:
+            continue  
+
+        last_logged = _violation_cooldown.get(tid, 0)
+        if current_time - last_logged < COOLDOWN_SECONDS:
+            continue
+
         entry = {
             "timestamp": timestamp_str,
+            "track_id": tid,
             "camera_id": camera_id or "unknown",
-            "violation_type": v.violation,          
+            "violation_type": v.violation,
             "zone_label": v.zone_label,
             "note": v.note or "",
-            "age_label": v.age_label,               
+            "age_label": v.age_label,
             "person_conf": float(v.conf),
             "age_conf": float(v.age_conf),
         }
-        entries.append(entry)
+        new_entries.append(entry)
 
-    if entries:
+        # Обновляем время последнего логирования
+        _violation_cooldown[tid] = current_time
+
+    # Записываем в файл
+    if new_entries:
         with _violation_log_lock:
             with VIOLATION_LOG.open("a", encoding="utf-8") as f:
-                for e in entries:
+                for e in new_entries:
                     f.write(json.dumps(e, ensure_ascii=False) + "\n")
+
+        print(f"[LOG] Записано {len(new_entries)} новых нарушений")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Глобальное состояние
