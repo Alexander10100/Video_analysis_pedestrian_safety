@@ -58,7 +58,7 @@ def load_violations(camera_id: str | None = None,
 
 
 def generate_report(violations: list, output: str, camera_id: str | None = None):
-    """Генерирует JSON-отчёт с учётом track_id (уникальные нарушители)"""
+    """Генерирует JSON-отчёт """
     if not violations:
         print("[INFO] За указанный период нарушений не найдено.")
         empty_report = {
@@ -79,7 +79,7 @@ def generate_report(violations: list, output: str, camera_id: str | None = None)
     by_type = defaultdict(int)
     by_zone = defaultdict(int)
     by_age = defaultdict(int)
-    unique_tracks = set()          # ← для подсчёта уникальных людей
+    unique_tracks = set()          #для подсчёта уникальных людей
     confidence_stats = []
 
     timeline = defaultdict(lambda: defaultdict(int))
@@ -111,7 +111,7 @@ def generate_report(violations: list, output: str, camera_id: str | None = None)
         "generated_at": datetime.now().isoformat(),
         "camera_id": camera_id or "all",
         "total_violations": len(violations),
-        "unique_persons": len(unique_tracks),           # ← самое важное добавление
+        "unique_persons": len(unique_tracks),           
         "confidence": {
             "average": round(avg_conf, 3),
             "min": round(min_conf, 3),
