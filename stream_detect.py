@@ -26,8 +26,9 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from report_generator import get_collector, get_report_generator
 from stream_detect_web import create_app
+import json
+from datetime import datetime
 
 from age_classifier      import AgeClassifier, AgeTracker, BboxEMA
 from traffic_light       import TrafficLightAnalyzer
@@ -41,9 +42,6 @@ from zone_manager        import ZoneManager
 zone_mgr    = ZoneManager()
 tl_analyzer = TrafficLightAnalyzer()
 viol_det    = ViolationDetector(zone_mgr, tl_analyzer)
-
-# Коллектор нарушений для генерации отчетов
-violation_collector = get_collector()
 
 # ── AgeClassifier — создаётся/пересоздаётся при смене камеры ─────────────────
 _age_clf:  AgeClassifier | None = None
@@ -62,6 +60,59 @@ _bbox_ema = BboxEMA(alpha=0.35)
 # Счётчик кадров для периодической чистки мёртвых треков
 _evict_every = 150   # кадров
 
+# ── Логирование нарушений для отчётов ───────────────────────────────────────
+VIOLATION_LOG = Path("violations_log.jsonl")
+_violation_log_lock = threading.Lock()
+
+# Защита от повторных нарушений одного и того же человека
+_violation_cooldown: dict[int, float] = {}
+COOLDOWN_SECONDS = 10        # секунд между логированиями одного track_id
+
+def log_violations(camera_id: str, violation_list: list, ts: float):
+    if not violation_list:
+        return
+
+    timestamp_str = datetime.fromtimestamp(ts).isoformat()
+    current_time = ts
+    new_entries = []
+
+    for v in violation_list:
+        if v.violation == "none":
+            continue
+
+        tid = getattr(v, 'track_id', -1)   
+
+        if tid < 0:
+            continue  
+
+        last_logged = _violation_cooldown.get(tid, 0)
+        if current_time - last_logged < COOLDOWN_SECONDS:
+            continue
+
+        entry = {
+            "timestamp": timestamp_str,
+            "track_id": tid,
+            "camera_id": camera_id or "unknown",
+            "violation_type": v.violation,
+            "zone_label": v.zone_label,
+            "note": v.note or "",
+            "age_label": v.age_label,
+            "person_conf": float(v.conf),
+            "age_conf": float(v.age_conf),
+        }
+        new_entries.append(entry)
+
+        # Обновляем время последнего логирования
+        _violation_cooldown[tid] = current_time
+
+    # Записываем в файл
+    if new_entries:
+        with _violation_log_lock:
+            with VIOLATION_LOG.open("a", encoding="utf-8") as f:
+                for e in new_entries:
+                    f.write(json.dumps(e, ensure_ascii=False) + "\n")
+
+        print(f"[LOG] Записано {len(new_entries)} новых нарушений")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Глобальное состояние
@@ -333,25 +384,12 @@ def detect_and_analyze(
                 f"BboxEMA={evicted_ema}, AgeTracker={evicted_tracker} треков удалено"
             )
 
-    # ── Анализ нарушений ──────────────────────────────────────────────────────
-    violations = viol_det.analyze(norm_boxes) if norm_boxes else []
-    
-    # ── Сбор нарушений для отчетов ────────────────────────────────────────────
-    violation_collector.set_frame_number(frame_idx)
-    for pv in violations:
-        if pv.violation != "none":
-            violation_collector.add_violation(
-                track_id=pv.track_id,
-                violation_type=pv.violation,
-                zone_label=pv.zone_label,
-                age_label=pv.age_label,  # Используем реальный age_label из pv
-                confidence=pv.conf,
-                bbox=pv.box,
-                note=pv.note,
-            )
-    
-    # ── Отрисовка нарушений ───────────────────────────────────────────────────
+    violations        = viol_det.analyze(norm_boxes) if norm_boxes else []
     annotated, vcount = draw_violations(annotated, violations, fw, fh)
+
+        # === Логируем нарушения для отчётов ===
+    cam_id = state.get("camera_id", "") if "state" in globals() else ""
+    log_violations(cam_id, violations, time.time())
 
     # Состояния светофоров поверх всего
     if cw_zones:
@@ -364,10 +402,7 @@ def detect_and_analyze(
         state["children"]   = children_cnt
 
     _draw_legend(annotated, persons, elapsed_ms, vcount, adults_cnt, children_cnt)
-    
     return annotated, persons, elapsed_ms
-
-    
 
 
 def _draw_legend(

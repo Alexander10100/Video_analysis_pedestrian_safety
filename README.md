@@ -20,6 +20,16 @@ python stream_detect.py --folder ./videos
 
 ```
 
+# Все нарушения за последние 24 часа для cam1
+python report_generator.py --camera cam1 --last 24h --output report_cam1_today.json
+
+# За конкретный час
+python report_generator.py --camera cam1 --since "2026-04-13T09:00:00" --until "2026-04-13T10:00:00"
+
+# Все камеры за всё время
+python report_generator.py --output full_report.json
+
+
 ## Параметры запуска
 
 ```bash
