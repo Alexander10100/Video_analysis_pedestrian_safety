@@ -38,6 +38,7 @@ import argparse
 import sys
 import time
 from pathlib import Path
+from typing import Callable
 
 import cv2
 import numpy as np
@@ -182,6 +183,7 @@ def process_video(
     imgsz: int,
     detect_every: int,
     max_frames: int,
+    violation_callback: Callable[[list, float], None] | None = None,
 ) -> dict:
     """
     Обработать один видеофайл, записать аннотированный результат.
@@ -318,6 +320,8 @@ def process_video(
                 age_tracker.evict(active_tids)
 
             violations        = viol_det.analyze(norm_boxes) if norm_boxes else []
+            if violation_callback is not None and violations:
+                violation_callback(violations, frame_idx / src_fps)
             annotated, vcount = draw_violations(annotated, violations, frame_w, frame_h)
 
             if cw_zones:

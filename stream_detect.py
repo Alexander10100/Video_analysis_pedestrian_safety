@@ -751,6 +751,8 @@ def main():
                         help="Лимит детекций в минуту. По умолчанию: 60")
     parser.add_argument("--port",   type=int,   default=5000,
                         help="Порт веб-сервера. По умолчанию: 5000")
+    parser.add_argument("--camera", type=str,   default="",
+                        help="ID камеры для автозагрузки зон при старте")
 
     args = parser.parse_args()
 
@@ -762,6 +764,9 @@ def main():
 
     _source_url    = args.url
     _source_folder = args.folder
+
+    if args.camera.strip():
+        set_camera(args.camera.strip())
 
     threading.Thread(target=capture_thread, daemon=True, name="capture").start()
 
