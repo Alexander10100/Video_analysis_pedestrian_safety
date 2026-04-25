@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Камера {{ camera_id }}</title>
+  <style>
+    body { margin: 0; font-family: "Segoe UI", Tahoma, sans-serif; background: #0f172a; color: #e2e8f0; }
+    .layout { min-height: 100vh; display: grid; grid-template-rows: auto 1fr; }
+    .bar { padding: 12px 16px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; }
+    .shell { position: relative; margin: 14px; border: 1px solid #334155; border-radius: 12px; overflow: hidden; background: #020617; }
+    #frameImage, #zoneCanvas { width: 100%; height: calc(100vh - 92px); display: block; object-fit: contain; }
+    #zoneCanvas { position: absolute; inset: 0; }
+    button { border: 0; border-radius: 10px; padding: 10px 12px; cursor: pointer; background: #2563eb; color: #fff; }
+    .hint { color: #94a3b8; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <div class="bar">
+      <div>
+        <strong>{{ camera_id }}</strong>
+        <span class="hint">Первый кадр + сохраненные зоны камеры</span>
+      </div>
+      <button id="backBtn">Назад к heatmap</button>
+    </div>
+    <div class="shell">
+      <img id="frameImage" alt="Кадр камеры">
+      <canvas id="zoneCanvas"></canvas>
+    </div>
+  </div>
+  <script>
+    const CAMERA_ID = "{{ camera_id }}";
+    const img = document.getElementById('frameImage');
+    const canvas = document.getElementById('zoneCanvas');
+    const backBtn = document.getElementById('backBtn');
+    const state = { zones: [], imageBox: { x: 0, y: 0, width: 1, height: 1 } };
+
+    function zoneColor(zone) {
+      const color = Array.isArray(zone.color) && zone.color.length === 3 ? zone.color : [0, 80, 220];
+      return `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
+    }
+
+    function resizeCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      const ratio = window.devicePixelRatio || 1;
+      canvas.width = Math.round(rect.width * ratio);
+      canvas.height = Math.round(rect.height * ratio);
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      computeImageBox();
+      drawZones();
+    }
+
+    function computeImageBox() {
+      const shell = canvas.getBoundingClientRect();
+      const nw = img.naturalWidth || shell.width;
+      const nh = img.naturalHeight || shell.height;
+      const scale = Math.min(shell.width / nw, shell.height / nh);
+      state.imageBox = {
+        x: (shell.width - nw * scale) / 2,
+        y: (shell.height - nh * scale) / 2,
+        width: nw * scale,
+        height: nh * scale,
+      };
+    }
+
+    function toCanvasPoint(point) {
+      return [
+        state.imageBox.x + point[0] * state.imageBox.width,
+        state.imageBox.y + point[1] * state.imageBox.height,
+      ];
+    }
+
+    function drawZones() {
+      const ctx = canvas.getContext('2d');
+      const rect = canvas.getBoundingClientRect();
+      ctx.clearRect(0, 0, rect.width, rect.height);
+      state.zones.forEach(zone => {
+        const polygon = Array.isArray(zone.polygon) ? zone.polygon : [];
+        if (polygon.length < 3) return;
+        ctx.beginPath();
+        polygon.forEach((p, i) => {
+          const [x, y] = toCanvasPoint(p);
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.closePath();
+        const stroke = zoneColor(zone);
+        ctx.strokeStyle = stroke;
+        ctx.fillStyle = stroke.replace('rgb', 'rgba').replace(')', ', 0.2)');
+        ctx.lineWidth = 2;
+        ctx.fill();
+        ctx.stroke();
+      });
+    }
+
+    async function loadPreview() {
+      const res = await fetch(`/api/camera/${encodeURIComponent(CAMERA_ID)}/preview`);
+      const payload = await res.json();
+      if (!payload.ok || !payload.has_frame) {
+        throw new Error('Не найдено видео для камеры');
+      }
+      state.zones = payload.zones || [];
+      img.src = payload.frame_url;
+    }
+
+    img.addEventListener('load', resizeCanvas);
+    window.addEventListener('resize', resizeCanvas);
+    backBtn.addEventListener('click', () => { window.location.href = '/'; });
+    loadPreview().catch(error => { alert(error.message); });
+  </script>
+</body>
+</html>

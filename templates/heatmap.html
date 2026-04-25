@@ -159,31 +159,24 @@
     .marker {
       position: absolute;
       transform: translate(-50%, -50%);
-      min-width: 122px;
-      padding: 8px 10px;
-      border-radius: 14px;
-      background: rgba(30, 28, 25, 0.78);
-      color: #fff;
-      border: 1px solid rgba(255, 255, 255, 0.14);
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: rgba(194, 79, 47, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.85);
+      box-shadow: 0 0 0 3px rgba(194, 79, 47, 0.18);
       cursor: grab;
       user-select: none;
     }
 
-    .marker strong {
-      display: block;
-      font-size: 13px;
-      margin-bottom: 2px;
-    }
-
-    .marker span {
-      display: block;
-      font-size: 12px;
-      color: rgba(255, 255, 255, 0.82);
+    .marker.locked {
+      cursor: pointer;
+      opacity: 0.92;
     }
 
     .marker.unplaced {
-      background: rgba(194, 79, 47, 0.88);
+      background: rgba(24, 74, 101, 0.95);
+      box-shadow: 0 0 0 3px rgba(24, 74, 101, 0.2);
     }
 
     .camera-list {
@@ -251,6 +244,7 @@
 
       <button id="saveBtn">Сохранить позиции камер</button>
       <button id="reloadBtn" class="secondary">Перечитать отчёты</button>
+      <button id="lockBtn" class="secondary">Закрепить точки: выкл</button>
 
       <div class="stats">
         <div id="totals">Камер: 0 • С данными: 0</div>
@@ -282,6 +276,7 @@
       positions: {},
       backgroundUrl: null,
       draggingCameraId: null,
+      positionsLocked: false,
     };
 
     const els = {
@@ -298,6 +293,7 @@
       radiusRange: document.getElementById('radiusRange'),
       reloadBtn: document.getElementById('reloadBtn'),
       saveBtn: document.getElementById('saveBtn'),
+      lockBtn: document.getElementById('lockBtn'),
       status: document.getElementById('status'),
       totals: document.getElementById('totals'),
     };
@@ -355,20 +351,29 @@
 
         const marker = document.createElement('div');
         marker.className = 'marker';
+        if (state.positionsLocked) {
+          marker.classList.add('locked');
+        }
         if (!state.positions[point.camera_id]) {
           marker.classList.add('unplaced');
         }
         marker.style.left = `${point.x * 100}%`;
         marker.style.top = `${point.y * 100}%`;
         marker.dataset.cameraId = point.camera_id;
-        marker.innerHTML = `<strong>${point.camera_id}</strong><span>${point.total_violations} нарушений</span>`;
+        marker.title = point.camera_id;
 
         marker.addEventListener('pointerdown', event => {
+          if (state.positionsLocked) {
+            return;
+          }
           state.draggingCameraId = point.camera_id;
           marker.setPointerCapture(event.pointerId);
         });
 
         marker.addEventListener('pointermove', event => {
+          if (state.positionsLocked) {
+            return;
+          }
           if (state.draggingCameraId !== point.camera_id) {
             return;
           }
@@ -389,6 +394,10 @@
 
         marker.addEventListener('pointercancel', () => {
           state.draggingCameraId = null;
+        });
+
+        marker.addEventListener('dblclick', () => {
+          window.location.href = `/camera/${encodeURIComponent(point.camera_id)}`;
         });
 
         fragment.appendChild(marker);
@@ -460,6 +469,8 @@
       const response = await fetch('/api/state');
       const payload = await response.json();
       state.positions = payload.config?.positions || {};
+      state.positionsLocked = Boolean(payload.config?.ui?.positions_locked);
+      els.lockBtn.textContent = `Закрепить точки: ${state.positionsLocked ? 'вкл' : 'выкл'}`;
       setBackground(payload.background_url);
       await loadHeatmap();
     }
@@ -469,7 +480,7 @@
       const response = await fetch('/api/positions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ positions: state.positions }),
+        body: JSON.stringify({ positions: state.positions, positions_locked: state.positionsLocked }),
       });
       const payload = await response.json();
       if (!payload.ok) {
@@ -514,6 +525,13 @@
 
     els.reloadBtn.addEventListener('click', () => {
       loadHeatmap().catch(error => setStatus(error.message));
+    });
+
+    els.lockBtn.addEventListener('click', () => {
+      state.positionsLocked = !state.positionsLocked;
+      els.lockBtn.textContent = `Закрепить точки: ${state.positionsLocked ? 'вкл' : 'выкл'}`;
+      renderMarkers();
+      savePositions().catch(error => setStatus(error.message));
     });
 
     els.metricSelect.addEventListener('change', renderAll);
