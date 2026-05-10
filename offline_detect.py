@@ -36,8 +36,10 @@ from __future__ import annotations
 
 import argparse
 import sys
+import threading
 import time
 from pathlib import Path
+from queue import Queue
 from typing import Callable
 
 import cv2
@@ -63,6 +65,126 @@ OUTPUT_EXT    = ".mp4"
 
 # ── Периодичность чистки мёртвых треков ──────────────────────────────────────
 _EVICT_EVERY = 150   # детектируемых кадров
+
+
+def _configure_runtime():
+    cv2.setUseOptimized(True)
+    try:
+        import torch
+    except ImportError:
+        return None
+
+    if torch.cuda.is_available():
+        torch.backends.cudnn.benchmark = True
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+        try:
+            torch.set_float32_matmul_precision("high")
+        except Exception:
+            pass
+    return torch
+
+
+_TORCH = _configure_runtime()
+
+
+def _resolve_device(device: str = "auto") -> str:
+    requested = (device or "auto").strip().lower()
+    if requested != "auto":
+        if requested.isdigit():
+            return f"cuda:{requested}"
+        return requested
+    if _TORCH is not None and _TORCH.cuda.is_available():
+        return "cuda:0"
+    return "cpu"
+
+
+def _use_half_for_device(device: str) -> bool:
+    if _TORCH is None or not _TORCH.cuda.is_available():
+        return False
+    return device not in {"cpu", "mps"}
+
+
+def _preload_video_frames(cap: cv2.VideoCapture, limit: int) -> list[np.ndarray]:
+    frames: list[np.ndarray] = []
+    while len(frames) < limit:
+        ok, frame = cap.read()
+        if not ok:
+            break
+        frames.append(frame)
+    return frames
+
+
+class AsyncVideoWriter:
+    def __init__(self, writer: cv2.VideoWriter, queue_size: int):
+        self._writer = writer
+        self._queue: Queue[np.ndarray | None] = Queue(maxsize=max(1, queue_size))
+        self._errors: list[BaseException] = []
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def _run(self) -> None:
+        while True:
+            frame = self._queue.get()
+            try:
+                if frame is None:
+                    return
+                self._writer.write(frame)
+            except BaseException as exc:
+                self._errors.append(exc)
+                return
+            finally:
+                self._queue.task_done()
+
+    def write(self, frame: np.ndarray) -> None:
+        if self._errors:
+            raise RuntimeError("Async VideoWriter failed") from self._errors[0]
+        self._queue.put(frame)
+
+    def close(self) -> None:
+        self._queue.put(None)
+        self._queue.join()
+        self._thread.join()
+        self._writer.release()
+        if self._errors:
+            raise RuntimeError("Async VideoWriter failed") from self._errors[0]
+
+
+class AsyncVideoReader:
+    def __init__(self, cap: cv2.VideoCapture, limit: int, queue_size: int):
+        self._cap = cap
+        self._limit = limit
+        self._queue: Queue[np.ndarray | None] = Queue(maxsize=max(1, queue_size))
+        self._errors: list[BaseException] = []
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def _run(self) -> None:
+        try:
+            count = 0
+            while count < self._limit:
+                ok, frame = self._cap.read()
+                if not ok:
+                    break
+                self._queue.put(frame)
+                count += 1
+        except BaseException as exc:
+            self._errors.append(exc)
+        finally:
+            self._queue.put(None)
+
+    def read(self) -> np.ndarray | None:
+        frame = self._queue.get()
+        self._queue.task_done()
+        if self._errors:
+            raise RuntimeError("Async VideoReader failed") from self._errors[0]
+        return frame
+
+    def close(self) -> None:
+        self._thread.join()
+        self._cap.release()
+        if self._errors:
+            raise RuntimeError("Async VideoReader failed") from self._errors[0]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -101,15 +223,23 @@ def _make_output_path(input_path: Path, output_arg: str | None) -> Path:
     return input_path.parent / (input_path.stem + "_annotated" + OUTPUT_EXT)
 
 
-def load_yolo(size: str):
+def load_yolo(size: str, device: str = "auto"):
     try:
         from ultralytics import YOLO
     except ImportError:
         print("[ERROR] pip install ultralytics")
         sys.exit(1)
     name = f"yolov8{size}.pt"
+    resolved_device = _resolve_device(device)
+    use_half = _use_half_for_device(resolved_device)
     print(f"[INFO] Загружаем модель {name}…")
-    return YOLO(name)
+    print(f"[INFO] YOLO device: {resolved_device}, half: {use_half}")
+    model = YOLO(name)
+    model.to(resolved_device)
+    model.model_name = name
+    model.device_name = resolved_device
+    model.use_half = use_half
+    return model
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -184,6 +314,11 @@ def process_video(
     detect_every: int,
     max_frames: int,
     violation_callback: Callable[[list, float], None] | None = None,
+    preload_video: bool = False,
+    writer_queue_size: int = 64,
+    inference_batch_size: int = 16,
+    write_annotated: bool = True,
+    reader_queue_size: int = 0,
 ) -> dict:
     """
     Обработать один видеофайл, записать аннотированный результат.
@@ -204,7 +339,29 @@ def process_video(
     print(f"       Разрешение    : {frame_w}×{frame_h}  FPS: {src_fps:.2f}")
     print(f"       Всего кадров  : {total_frames}  Лимит: {limit}")
     print(f"       Выходной файл : {output_path}")
-    print(f"       Детекция 1/{detect_every} кадров\n")
+    print(f"       Детекция 1/{detect_every} кадров")
+    print(f"       Preload RAM    : {'on' if preload_video else 'off'}")
+    print(f"       Reader queue   : {reader_queue_size if not preload_video else 0}")
+    print(f"       Writer queue   : {writer_queue_size}\n")
+    print(f"       Infer batch    : {inference_batch_size}\n")
+    print(f"       Annotated mp4  : {'on' if write_annotated else 'off'}\n")
+
+    preloaded_frames: list[np.ndarray] | None = None
+    if preload_video:
+        t_preload = time.perf_counter()
+        preloaded_frames = _preload_video_frames(cap, limit)
+        cap.release()
+        cap = None
+        limit = len(preloaded_frames)
+        if limit == 0:
+            print(f"[ERROR] Не удалось прочитать кадры: {input_path}")
+            return {}
+        bytes_total = sum(frame.nbytes for frame in preloaded_frames)
+        print(
+            f"[INFO] Preloaded frames: {limit}, "
+            f"RAM: {bytes_total / (1024 ** 3):.2f} GB, "
+            f"time: {time.perf_counter() - t_preload:.1f}s"
+        )
 
     # ── AgeClassifier: создать/переинициализировать под высоту кадра ─────────
     if age_clf is None or age_clf.frame_height != frame_h:
@@ -221,13 +378,18 @@ def process_video(
     bbox_ema.reset()
 
     # ── VideoWriter ───────────────────────────────────────────────────────────
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    fourcc = cv2.VideoWriter_fourcc(*OUTPUT_FOURCC)
-    writer = cv2.VideoWriter(str(output_path), fourcc, src_fps, (frame_w, frame_h))
-    if not writer.isOpened():
-        print(f"[ERROR] Не удалось создать VideoWriter: {output_path}")
-        cap.release()
-        return {}
+    writer = None
+    async_writer = None
+    if write_annotated:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        fourcc = cv2.VideoWriter_fourcc(*OUTPUT_FOURCC)
+        writer = cv2.VideoWriter(str(output_path), fourcc, src_fps, (frame_w, frame_h))
+        if not writer.isOpened():
+            print(f"[ERROR] Не удалось создать VideoWriter: {output_path}")
+            if cap is not None:
+                cap.release()
+            return {}
+        async_writer = AsyncVideoWriter(writer, writer_queue_size) if writer_queue_size > 0 else None
 
     # ── Статистика ────────────────────────────────────────────────────────────
     stat = {
@@ -239,21 +401,185 @@ def process_video(
         "total_children":    0,
         "inference_ms_sum":  0.0,
         "elapsed_sec":       0.0,
+        "annotated_written": write_annotated,
     }
 
     cw_zones  = zone_mgr.crosswalk_zones()
     all_zones = zone_mgr.get_all()
+    async_reader = (
+        AsyncVideoReader(cap, limit, reader_queue_size)
+        if cap is not None and not preload_video and reader_queue_size > 0
+        else None
+    )
 
     last_annotated: np.ndarray | None = None
     frame_idx   = 0
     detect_cnt  = 0          # счётчик именно детектируемых кадров (для evict)
     t_start     = time.perf_counter()
     t_progress  = t_start
+    track_kwargs = {
+        "classes": [0],
+        "conf": conf,
+        "iou": 0.45,
+        "imgsz": imgsz,
+        "persist": True,
+        "verbose": False,
+        "device": getattr(model, "device_name", "auto"),
+        "half": bool(getattr(model, "use_half", False)),
+    }
 
-    while frame_idx < limit:
-        ok, frame = cap.read()
-        if not ok:
-            break
+    use_batched_inference = (
+        preloaded_frames is not None
+        and detect_every == 1
+        and inference_batch_size > 1
+    )
+
+    if use_batched_inference:
+        for batch_start in range(0, limit, inference_batch_size):
+            batch_frames = preloaded_frames[batch_start:batch_start + inference_batch_size]
+            if not batch_frames:
+                break
+
+            t0 = time.perf_counter()
+            if _TORCH is not None:
+                with _TORCH.inference_mode():
+                    batch_results = model.track(batch_frames, **track_kwargs)
+            else:
+                batch_results = model.track(batch_frames, **track_kwargs)
+            batch_elapsed_ms = (time.perf_counter() - t0) * 1000
+            per_frame_ms = batch_elapsed_ms / max(1, len(batch_results))
+
+            for local_idx, (frame, results) in enumerate(zip(batch_frames, batch_results)):
+                frame_idx = batch_start + local_idx + 1
+                detect_cnt += 1
+
+                if cw_zones:
+                    tl_analyzer.process_frame(frame, cw_zones)
+                tl_states = tl_analyzer.get_all_states()
+
+                annotated = frame.copy() if write_annotated else None
+                if write_annotated and all_zones:
+                    annotated = draw_zones(annotated, all_zones, tl_states)
+
+                norm_boxes = []
+                adults_cnt = 0
+                children_cnt = 0
+                active_tids: set[int] = set()
+
+                boxes = results.boxes
+                if boxes is not None and len(boxes) > 0:
+                    xyxy = boxes.xyxy.detach().cpu().numpy()
+                    ids = (
+                        boxes.id.detach().cpu().numpy().astype(np.int32, copy=False)
+                        if boxes.id is not None
+                        else np.full(len(xyxy), -1, dtype=np.int32)
+                    )
+                    confs = (
+                        boxes.conf.detach().cpu().numpy()
+                        if boxes.conf is not None
+                        else np.zeros(len(xyxy), dtype=np.float32)
+                    )
+
+                    for i in range(len(xyxy)):
+                        raw_x1, raw_y1, raw_x2, raw_y2 = np.rint(xyxy[i]).astype(np.int32)
+                        tid = int(ids[i])
+                        conf_val = float(confs[i])
+
+                        if tid >= 0:
+                            active_tids.add(tid)
+
+                        x1, y1, x2, y2 = bbox_ema.smooth(tid, raw_x1, raw_y1, raw_x2, raw_y2)
+                        raw_label, raw_conf = age_clf.classify(x1, y1, x2, y2)
+                        age_label, age_conf = age_tracker.update(tid, raw_label, raw_conf)
+
+                        if age_label == "child":
+                            children_cnt += 1
+                        else:
+                            adults_cnt += 1
+
+                        norm_boxes.append((
+                            tid,
+                            x1 / frame_w, y1 / frame_h,
+                            x2 / frame_w, y2 / frame_h,
+                            conf_val,
+                            age_label,
+                            age_conf,
+                        ))
+
+                if detect_cnt % _EVICT_EVERY == 0 and active_tids:
+                    bbox_ema.evict(active_tids)
+                    age_tracker.evict(active_tids)
+
+                violations = viol_det.analyze(norm_boxes) if norm_boxes else []
+                if violation_callback is not None and violations:
+                    violation_callback(violations, frame_idx / src_fps)
+                if write_annotated:
+                    annotated, vcount = draw_violations(annotated, violations, frame_w, frame_h)
+                else:
+                    vcount = sum(1 for item in violations if item.violation != "none")
+
+                if write_annotated and cw_zones:
+                    annotated = draw_traffic_light_states(
+                        annotated, cw_zones, tl_states, frame_w, frame_h)
+
+                persons = len(norm_boxes)
+                if write_annotated:
+                    annotated = _draw_legend_offline(
+                        annotated,
+                        persons=persons,
+                        ms=per_frame_ms,
+                        violations=vcount,
+                        adults=adults_cnt,
+                        children=children_cnt,
+                        model_sz=getattr(model, "model_name", "?").replace("yolov8", "").replace(".pt", ""),
+                        camera_id=camera_id,
+                        age_calibrated=age_calibrated,
+                        frame_idx=frame_idx,
+                        total_frames=limit,
+                        detect_every=detect_every,
+                    )
+
+                    last_annotated = annotated
+                    if async_writer is not None:
+                        async_writer.write(annotated)
+                    elif writer is not None:
+                        writer.write(annotated)
+
+                stat["total_frames"] += 1
+                stat["detected_frames"] += 1
+                stat["total_persons"] += persons
+                stat["total_violations"] += vcount
+                stat["total_adults"] += adults_cnt
+                stat["total_children"] += children_cnt
+                stat["inference_ms_sum"] += per_frame_ms
+
+            now = time.perf_counter()
+            if now - t_progress >= 2.0:
+                t_progress = now
+                elapsed = now - t_start
+                rate = frame_idx / elapsed if elapsed > 0 else 0
+                eta = (limit - frame_idx) / rate if rate > 0 else 0
+                avg_ms = (stat["inference_ms_sum"] / stat["detected_frames"]
+                          if stat["detected_frames"] > 0 else 0)
+                print(
+                    f"\r  {_progress_bar(frame_idx, limit)}  "
+                    f"ETA:{_format_eta(eta)}  "
+                    f"inf:{avg_ms:.0f}ms  "
+                    f"viol:{stat['total_violations']}  ",
+                    end="", flush=True,
+                )
+
+    while frame_idx < limit and not use_batched_inference:
+        if preloaded_frames is not None:
+            frame = preloaded_frames[frame_idx]
+        elif async_reader is not None:
+            frame = async_reader.read()
+            if frame is None:
+                break
+        else:
+            ok, frame = cap.read()
+            if not ok:
+                break
 
         frame_idx += 1
 
@@ -262,18 +588,18 @@ def process_video(
             detect_cnt += 1
 
             t0 = time.perf_counter()
-            results = model.track(
-                frame, classes=[0], conf=conf, iou=0.45,
-                imgsz=imgsz, persist=True, verbose=False,
-            )[0]
-            elapsed_ms = (time.perf_counter() - t0) * 1000
+            if _TORCH is not None:
+                with _TORCH.inference_mode():
+                    results = model.track(frame, **track_kwargs)[0]
+            else:
+                results = model.track(frame, **track_kwargs)[0]
 
             if cw_zones:
                 tl_analyzer.process_frame(frame, cw_zones)
             tl_states = tl_analyzer.get_all_states()
 
-            annotated = frame.copy()
-            if all_zones:
+            annotated = frame.copy() if write_annotated else None
+            if write_annotated and all_zones:
                 annotated = draw_zones(annotated, all_zones, tl_states)
 
             # ── Bbox + EMA + классификация + temporal smoothing ───────────────
@@ -282,11 +608,24 @@ def process_video(
             children_cnt  = 0
             active_tids: set[int] = set()
 
-            if results.boxes is not None:
-                for box in results.boxes:
-                    raw_x1, raw_y1, raw_x2, raw_y2 = map(int, box.xyxy[0])
-                    tid      = int(box.id[0])     if box.id   is not None else -1
-                    conf_val = float(box.conf[0]) if box.conf is not None else 0.0
+            boxes = results.boxes
+            if boxes is not None and len(boxes) > 0:
+                xyxy = boxes.xyxy.detach().cpu().numpy()
+                ids = (
+                    boxes.id.detach().cpu().numpy().astype(np.int32, copy=False)
+                    if boxes.id is not None
+                    else np.full(len(xyxy), -1, dtype=np.int32)
+                )
+                confs = (
+                    boxes.conf.detach().cpu().numpy()
+                    if boxes.conf is not None
+                    else np.zeros(len(xyxy), dtype=np.float32)
+                )
+
+                for i in range(len(xyxy)):
+                    raw_x1, raw_y1, raw_x2, raw_y2 = np.rint(xyxy[i]).astype(np.int32)
+                    tid = int(ids[i])
+                    conf_val = float(confs[i])
 
                     if tid >= 0:
                         active_tids.add(tid)
@@ -314,6 +653,8 @@ def process_video(
                         age_conf,
                     ))
 
+            elapsed_ms = (time.perf_counter() - t0) * 1000
+
             # ── Периодическая чистка мёртвых треков ──────────────────────────
             if detect_cnt % _EVICT_EVERY == 0 and active_tids:
                 bbox_ema.evict(active_tids)
@@ -322,30 +663,34 @@ def process_video(
             violations        = viol_det.analyze(norm_boxes) if norm_boxes else []
             if violation_callback is not None and violations:
                 violation_callback(violations, frame_idx / src_fps)
-            annotated, vcount = draw_violations(annotated, violations, frame_w, frame_h)
+            if write_annotated:
+                annotated, vcount = draw_violations(annotated, violations, frame_w, frame_h)
+            else:
+                vcount = sum(1 for item in violations if item.violation != "none")
 
-            if cw_zones:
+            if write_annotated and cw_zones:
                 annotated = draw_traffic_light_states(
                     annotated, cw_zones, tl_states, frame_w, frame_h)
 
             persons = len(norm_boxes)
 
-            annotated = _draw_legend_offline(
-                annotated,
-                persons        = persons,
-                ms             = elapsed_ms,
-                violations     = vcount,
-                adults         = adults_cnt,
-                children       = children_cnt,
-                model_sz       = getattr(model, "model_name", "?").replace("yolov8", "").replace(".pt", ""),
-                camera_id      = camera_id,
-                age_calibrated = age_calibrated,
-                frame_idx      = frame_idx,
-                total_frames   = limit,
-                detect_every   = detect_every,
-            )
+            if write_annotated:
+                annotated = _draw_legend_offline(
+                    annotated,
+                    persons        = persons,
+                    ms             = elapsed_ms,
+                    violations     = vcount,
+                    adults         = adults_cnt,
+                    children       = children_cnt,
+                    model_sz       = getattr(model, "model_name", "?").replace("yolov8", "").replace(".pt", ""),
+                    camera_id      = camera_id,
+                    age_calibrated = age_calibrated,
+                    frame_idx      = frame_idx,
+                    total_frames   = limit,
+                    detect_every   = detect_every,
+                )
 
-            last_annotated = annotated
+                last_annotated = annotated
 
             stat["detected_frames"]  += 1
             stat["total_persons"]    += persons
@@ -357,7 +702,11 @@ def process_video(
         else:
             annotated = last_annotated if last_annotated is not None else frame
 
-        writer.write(annotated)
+        if write_annotated:
+            if async_writer is not None:
+                async_writer.write(annotated)
+            elif writer is not None:
+                writer.write(annotated)
         stat["total_frames"] += 1
 
         now = time.perf_counter()
@@ -376,8 +725,15 @@ def process_video(
                 end="", flush=True,
             )
 
-    cap.release()
-    writer.release()
+    if async_reader is not None:
+        async_reader.close()
+        cap = None
+    if cap is not None:
+        cap.release()
+    if async_writer is not None:
+        async_writer.close()
+    elif writer is not None:
+        writer.release()
 
     stat["elapsed_sec"] = time.perf_counter() - t_start
     print()
@@ -398,7 +754,10 @@ def _print_stats(stat: dict, input_path: Path, output_path: Path):
     print()
     print("═" * 58)
     print(f"  Обработан файл   : {input_path.name}")
-    print(f"  Записан файл     : {output_path}")
+    if stat.get("annotated_written", True):
+        print(f"  Записан файл     : {output_path}")
+    else:
+        print("  Аннот. видео     : отключено")
     print(f"  Всего кадров     : {stat['total_frames']}")
     print(f"  Кадров с детекц. : {stat['detected_frames']}")
     print(f"  Время обработки  : {_format_eta(elapsed)}")
@@ -454,6 +813,8 @@ def main():
     parser.add_argument("--model",        type=str, default="m",
                         choices=["n", "s", "m", "l", "x"],
                         help="Размер модели YOLOv8")
+    parser.add_argument("--device",       type=str, default="auto",
+                        help="YOLO device: auto, cpu, or CUDA device index such as 0")
     parser.add_argument("--conf",         type=float, default=0.45,
                         help="Порог уверенности детекции")
     parser.add_argument("--imgsz",        type=int,   default=640,
@@ -462,13 +823,23 @@ def main():
                         help="Детектировать каждый N-й кадр (1 = каждый кадр)")
     parser.add_argument("--max-frames",   type=int,   default=0,
                         help="Ограничить число обрабатываемых кадров (0 = всё видео)")
+    parser.add_argument("--preload-video", action="store_true",
+                        help="Загрузить видео целиком в RAM перед обработкой")
+    parser.add_argument("--writer-queue-size", type=int, default=64,
+                        help="Очередь кадров для асинхронной записи видео; 0 отключает async writer")
+    parser.add_argument("--reader-queue-size", type=int, default=0,
+                        help="Очередь кадров для фонового чтения видео; 0 отключает async reader")
+    parser.add_argument("--inference-batch-size", type=int, default=16,
+                        help="Кадров на один YOLO batch при preload и detect-every=1")
+    parser.add_argument("--no-annotated-video", action="store_true",
+                        help="Не рисовать и не сохранять аннотированное mp4; самый быстрый режим для отчетов")
 
     args = parser.parse_args()
 
     camera_id    = args.camera.strip()
     detect_every = max(1, args.detect_every)
 
-    model = load_yolo(args.model)
+    model = load_yolo(args.model, device=args.device)
 
     if args.video:
         sources = [Path(args.video)]
@@ -526,6 +897,11 @@ def main():
             imgsz        = args.imgsz,
             detect_every = detect_every,
             max_frames   = args.max_frames,
+            preload_video = args.preload_video,
+            writer_queue_size = args.writer_queue_size,
+            inference_batch_size = args.inference_batch_size,
+            write_annotated = not args.no_annotated_video,
+            reader_queue_size = args.reader_queue_size,
         )
 
         if stat:

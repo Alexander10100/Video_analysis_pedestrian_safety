@@ -49,11 +49,44 @@ def parse_args() -> argparse.Namespace:
         help="Replace the existing combined report instead of merging into it",
     )
     parser.add_argument("--model", default="m", choices=["n", "s", "m", "l", "x"])
+    parser.add_argument(
+        "--device",
+        default="auto",
+        help="YOLO device: auto, cpu, or CUDA device index such as 0",
+    )
     parser.add_argument("--conf", type=float, default=0.45)
     parser.add_argument("--imgsz", type=int, default=640)
-    parser.add_argument("--detect-every", type=int, default=2)
+    parser.add_argument("--detect-every", type=int, default=1)
     parser.add_argument("--max-frames", type=int, default=0)
     parser.add_argument("--workers", type=int, default=1)
+    parser.add_argument(
+        "--preload-video",
+        action="store_true",
+        help="Load each video into RAM before processing",
+    )
+    parser.add_argument(
+        "--writer-queue-size",
+        type=int,
+        default=64,
+        help="Frames buffered for asynchronous output video writing; 0 disables async writing",
+    )
+    parser.add_argument(
+        "--reader-queue-size",
+        type=int,
+        default=0,
+        help="Frames buffered by background video reader; 0 disables async reading",
+    )
+    parser.add_argument(
+        "--inference-batch-size",
+        type=int,
+        default=16,
+        help="Frames per YOLO batch when video is preloaded and detect-every is 1",
+    )
+    parser.add_argument(
+        "--no-annotated-video",
+        action="store_true",
+        help="Do not render/save annotated mp4; fastest mode for reports only",
+    )
     parser.add_argument("--port", type=int, default=5000)
     parser.add_argument(
         "--skip-annotation",
@@ -261,10 +294,16 @@ def process_folder_job(
     annotated_root_str: str,
     reports_root_str: str,
     model_size: str,
+    device: str,
     conf: float,
     imgsz: int,
     detect_every: int,
     max_frames: int,
+    preload_video: bool,
+    writer_queue_size: int,
+    inference_batch_size: int,
+    write_annotated: bool,
+    reader_queue_size: int,
 ) -> dict:
     folder = Path(folder_str)
     annotated_root = Path(annotated_root_str)
@@ -277,7 +316,7 @@ def process_folder_job(
 
     print(f"[START] {camera_id}: {len(videos)} videos")
 
-    model = load_yolo(model_size)
+    model = load_yolo(model_size, device=device)
     zone_mgr, _, _ = _build_pipeline(camera_id)
     age_tracker = AgeTracker(
         window=15,
@@ -328,6 +367,11 @@ def process_folder_job(
             detect_every=detect_every,
             max_frames=max_frames,
             violation_callback=make_violation_logger(camera_id, video_started_at, folder_violations),
+            preload_video=preload_video,
+            writer_queue_size=writer_queue_size,
+            inference_batch_size=inference_batch_size,
+            write_annotated=write_annotated,
+            reader_queue_size=reader_queue_size,
         )
 
         if not stat:
@@ -338,7 +382,7 @@ def process_folder_job(
             {
                 "video_name": video_path.name,
                 "video_path": str(video_path),
-                "annotated_path": str(output_path),
+                "annotated_path": str(output_path) if write_annotated else None,
                 "processing_stats": stat,
             }
         )
@@ -372,10 +416,16 @@ def run_jobs(
     annotated_root: Path,
     reports_root: Path,
     model_size: str,
+    device: str,
     conf: float,
     imgsz: int,
     detect_every: int,
     max_frames: int,
+    preload_video: bool,
+    writer_queue_size: int,
+    inference_batch_size: int,
+    write_annotated: bool,
+    reader_queue_size: int,
     workers: int,
 ) -> list[dict]:
     jobs = [
@@ -384,10 +434,16 @@ def run_jobs(
             str(annotated_root),
             str(reports_root),
             model_size,
+            device,
             conf,
             imgsz,
             detect_every,
             max_frames,
+            preload_video,
+            writer_queue_size,
+            inference_batch_size,
+            write_annotated,
+            reader_queue_size,
         )
         for folder in folders
     ]
@@ -501,10 +557,16 @@ def main() -> None:
         annotated_root=annotated_root,
         reports_root=reports_root,
         model_size=args.model,
+        device=args.device,
         conf=args.conf,
         imgsz=args.imgsz,
         detect_every=detect_every,
         max_frames=args.max_frames,
+        preload_video=args.preload_video,
+        writer_queue_size=args.writer_queue_size,
+        inference_batch_size=args.inference_batch_size,
+        write_annotated=not args.no_annotated_video,
+        reader_queue_size=args.reader_queue_size,
         workers=workers,
     )
 
