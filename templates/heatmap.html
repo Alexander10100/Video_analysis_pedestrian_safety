@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Тепловая карта камер</title>
+  <style>
+    :root {
+      --bg: #f3efe7;
+      --panel: rgba(255, 251, 245, 0.92);
+      --stroke: rgba(73, 58, 41, 0.18);
+      --text: #2a2118;
+      --muted: #6f6256;
+      --accent: #c24f2f;
+      --accent-2: #184a65;
+      --grid: rgba(24, 74, 101, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(194, 79, 47, 0.16), transparent 28%),
+        radial-gradient(circle at bottom right, rgba(24, 74, 101, 0.18), transparent 30%),
+        linear-gradient(135deg, #f8f3ea 0%, #e9e2d3 100%);
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      min-height: 100vh;
+      gap: 18px;
+      padding: 18px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--stroke);
+      border-radius: 22px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 18px 60px rgba(60, 40, 20, 0.08);
+    }
+
+    .sidebar {
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 28px;
+      line-height: 1.05;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .field, .stats {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .stats {
+      padding: 14px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.56);
+      border: 1px solid rgba(73, 58, 41, 0.08);
+    }
+
+    label {
+      font-size: 13px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    input[type="file"],
+    select,
+    button {
+      width: 100%;
+      border-radius: 14px;
+      border: 1px solid var(--stroke);
+      padding: 12px 14px;
+      font: inherit;
+    }
+
+    input[type="range"] {
+      width: 100%;
+    }
+
+    button {
+      cursor: pointer;
+      background: linear-gradient(135deg, var(--accent), #dd6d39);
+      color: #fff;
+      border: none;
+      font-weight: 600;
+    }
+
+    button.secondary {
+      background: linear-gradient(135deg, var(--accent-2), #2c6988);
+    }
+
+    .map-panel {
+      position: relative;
+      overflow: hidden;
+      min-height: 78vh;
+      padding: 14px;
+    }
+
+    .map-shell {
+      position: relative;
+      width: 100%;
+      height: calc(100vh - 64px);
+      border-radius: 18px;
+      overflow: hidden;
+      border: 1px solid var(--stroke);
+      background:
+        linear-gradient(var(--grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid) 1px, transparent 1px),
+        linear-gradient(180deg, #faf6ef 0%, #ebe1d0 100%);
+      background-size: 42px 42px, 42px 42px, auto;
+    }
+
+    #backgroundImage,
+    #heatCanvas,
+    #markerLayer {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    #backgroundImage {
+      object-fit: contain;
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .placeholder {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      color: var(--muted);
+      font-size: 18px;
+      padding: 24px;
+    }
+
+    .marker {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: rgba(194, 79, 47, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.85);
+      box-shadow: 0 0 0 3px rgba(194, 79, 47, 0.18);
+      cursor: grab;
+      user-select: none;
+    }
+
+    .marker.locked {
+      cursor: pointer;
+      opacity: 0.92;
+    }
+
+    .marker.unplaced {
+      background: rgba(24, 74, 101, 0.95);
+      box-shadow: 0 0 0 3px rgba(24, 74, 101, 0.2);
+    }
+
+    .camera-list {
+      display: grid;
+      gap: 8px;
+      max-height: 260px;
+      overflow: auto;
+    }
+
+    .camera-row {
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.54);
+      border: 1px solid rgba(73, 58, 41, 0.08);
+      font-size: 14px;
+    }
+
+    .status {
+      font-size: 13px;
+      color: var(--muted);
+      min-height: 20px;
+    }
+
+    @media (max-width: 980px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .map-shell {
+        height: 62vh;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="panel sidebar">
+      <div>
+        <h1>Тепловая карта камер</h1>
+        <p>Загрузите подложку, расставьте камеры на карте и страница соберёт отчёты по всем найденным камерам.</p>
+      </div>
+
+      <div class="field">
+        <label for="backgroundInput">Фоновая картинка</label>
+        <input id="backgroundInput" type="file" accept=".png,.jpg,.jpeg,.webp,.bmp">
+      </div>
+
+      <div class="field">
+        <label for="metricSelect">Метрика</label>
+        <select id="metricSelect">
+          <option value="total_violations">Нарушения</option>
+          <option value="unique_persons">Уникальные люди</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="radiusRange">Радиус тепла</label>
+        <input id="radiusRange" type="range" min="40" max="220" step="5" value="110">
+      </div>
+
+      <div class="field">
+        <label for="intensityRange">Насыщенность</label>
+        <input id="intensityRange" type="range" min="0.3" max="2.5" step="0.1" value="1">
+      </div>
+
+      <button id="saveBtn">Сохранить позиции камер</button>
+      <button id="reloadBtn" class="secondary">Перечитать отчёты</button>
+      <button id="lockBtn" class="secondary">Закрепить точки: выкл</button>
+
+      <div class="stats">
+        <div id="totals">Камер: 0 • С данными: 0</div>
+        <div id="bgInfo">Фон не загружен</div>
+        <div class="status" id="status"></div>
+      </div>
+
+      <div class="field">
+        <label>Камеры</label>
+        <div id="cameraList" class="camera-list"></div>
+      </div>
+    </aside>
+
+    <main class="panel map-panel">
+      <div class="map-shell" id="mapShell">
+        <img id="backgroundImage" alt="Фон карты">
+        <canvas id="heatCanvas"></canvas>
+        <div id="markerLayer"></div>
+        <div class="placeholder" id="placeholder">
+          Пока нет фоновой картинки. Можно загрузить схему, спутниковый снимок или план участка позже.
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const state = {
+      points: [],
+      positions: {},
+      backgroundUrl: null,
+      draggingCameraId: null,
+      positionsLocked: false,
+    };
+
+    const els = {
+      backgroundInput: document.getElementById('backgroundInput'),
+      backgroundImage: document.getElementById('backgroundImage'),
+      bgInfo: document.getElementById('bgInfo'),
+      cameraList: document.getElementById('cameraList'),
+      heatCanvas: document.getElementById('heatCanvas'),
+      intensityRange: document.getElementById('intensityRange'),
+      mapShell: document.getElementById('mapShell'),
+      markerLayer: document.getElementById('markerLayer'),
+      metricSelect: document.getElementById('metricSelect'),
+      placeholder: document.getElementById('placeholder'),
+      radiusRange: document.getElementById('radiusRange'),
+      reloadBtn: document.getElementById('reloadBtn'),
+      saveBtn: document.getElementById('saveBtn'),
+      lockBtn: document.getElementById('lockBtn'),
+      status: document.getElementById('status'),
+      totals: document.getElementById('totals'),
+    };
+
+    function setStatus(text) {
+      els.status.textContent = text || '';
+    }
+
+    function clamp(value, min, max) {
+      return Math.min(max, Math.max(min, value));
+    }
+
+    function pointMetric(point) {
+      return Number(point[els.metricSelect.value] || 0);
+    }
+
+    function resizeCanvas() {
+      const rect = els.mapShell.getBoundingClientRect();
+      els.heatCanvas.width = Math.max(1, Math.round(rect.width));
+      els.heatCanvas.height = Math.max(1, Math.round(rect.height));
+      renderAll();
+    }
+
+    function setBackground(url) {
+      state.backgroundUrl = url || null;
+      els.backgroundImage.src = state.backgroundUrl || '';
+      els.backgroundImage.style.display = state.backgroundUrl ? 'block' : 'none';
+      els.placeholder.style.display = state.backgroundUrl ? 'none' : 'flex';
+      els.bgInfo.textContent = state.backgroundUrl ? 'Фон загружен' : 'Фон не загружен';
+    }
+
+    function buildCameraList() {
+      els.cameraList.innerHTML = '';
+      const withData = state.points.filter(point => pointMetric(point) > 0).length;
+      els.totals.textContent = `Камер: ${state.points.length} • С данными: ${withData}`;
+
+      state.points.forEach(point => {
+        const row = document.createElement('div');
+        row.className = 'camera-row';
+        const placed = point.x != null && point.y != null ? 'на карте' : 'не размещена';
+        row.textContent = `${point.camera_id} • ${point.total_violations} нарушений • ${placed}`;
+        els.cameraList.appendChild(row);
+      });
+    }
+
+    function renderMarkers() {
+      els.markerLayer.innerHTML = '';
+      const fragment = document.createDocumentFragment();
+
+      state.points.forEach((point, index) => {
+        if (point.x == null || point.y == null) {
+          point.x = 0.12 + (index % 4) * 0.12;
+          point.y = 0.14 + Math.floor(index / 4) * 0.09;
+        }
+
+        const marker = document.createElement('div');
+        marker.className = 'marker';
+        if (state.positionsLocked) {
+          marker.classList.add('locked');
+        }
+        if (!state.positions[point.camera_id]) {
+          marker.classList.add('unplaced');
+        }
+        marker.style.left = `${point.x * 100}%`;
+        marker.style.top = `${point.y * 100}%`;
+        marker.dataset.cameraId = point.camera_id;
+        marker.title = point.camera_id;
+
+        marker.addEventListener('pointerdown', event => {
+          if (state.positionsLocked) {
+            return;
+          }
+          state.draggingCameraId = point.camera_id;
+          marker.setPointerCapture(event.pointerId);
+        });
+
+        marker.addEventListener('pointermove', event => {
+          if (state.positionsLocked) {
+            return;
+          }
+          if (state.draggingCameraId !== point.camera_id) {
+            return;
+          }
+          const rect = els.mapShell.getBoundingClientRect();
+          point.x = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+          point.y = clamp((event.clientY - rect.top) / rect.height, 0, 1);
+          state.positions[point.camera_id] = { x: point.x, y: point.y };
+          marker.style.left = `${point.x * 100}%`;
+          marker.style.top = `${point.y * 100}%`;
+          marker.classList.remove('unplaced');
+          drawHeatmap();
+          buildCameraList();
+        });
+
+        marker.addEventListener('pointerup', () => {
+          state.draggingCameraId = null;
+        });
+
+        marker.addEventListener('pointercancel', () => {
+          state.draggingCameraId = null;
+        });
+
+        marker.addEventListener('dblclick', () => {
+          window.location.href = `/camera/${encodeURIComponent(point.camera_id)}`;
+        });
+
+        fragment.appendChild(marker);
+      });
+
+      els.markerLayer.appendChild(fragment);
+    }
+
+    function heatColor(t) {
+      if (t < 0.25) return `rgba(44, 105, 136, ${t * 0.9})`;
+      if (t < 0.55) return `rgba(255, 186, 73, ${t})`;
+      if (t < 0.8) return `rgba(241, 112, 44, ${t})`;
+      return `rgba(196, 44, 44, ${t})`;
+    }
+
+    function drawHeatmap() {
+      const ctx = els.heatCanvas.getContext('2d');
+      const width = els.heatCanvas.width;
+      const height = els.heatCanvas.height;
+      ctx.clearRect(0, 0, width, height);
+
+      const positioned = state.points.filter(point => point.x != null && point.y != null);
+      const maxValue = Math.max(1, ...positioned.map(point => pointMetric(point)));
+      const radius = Number(els.radiusRange.value);
+      const intensity = Number(els.intensityRange.value);
+
+      positioned.forEach(point => {
+        const value = pointMetric(point);
+        if (value <= 0) {
+          return;
+        }
+        const alpha = clamp((value / maxValue) * intensity, 0.12, 1);
+        const px = point.x * width;
+        const py = point.y * height;
+        const gradient = ctx.createRadialGradient(px, py, 0, px, py, radius);
+        gradient.addColorStop(0, heatColor(alpha));
+        gradient.addColorStop(0.45, heatColor(alpha * 0.58));
+        gradient.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(px - radius, py - radius, radius * 2, radius * 2);
+      });
+    }
+
+    function renderAll() {
+      renderMarkers();
+      buildCameraList();
+      drawHeatmap();
+    }
+
+    async function loadHeatmap() {
+      setStatus('Чтение отчётов...');
+      const response = await fetch('/api/heatmap');
+      const payload = await response.json();
+      state.points = payload.points || [];
+
+      state.points.forEach(point => {
+        if (state.positions[point.camera_id]) {
+          point.x = state.positions[point.camera_id].x;
+          point.y = state.positions[point.camera_id].y;
+        }
+      });
+
+      setBackground(payload.background_url);
+      renderAll();
+      setStatus(`Отчёты перечитаны: ${new Date().toLocaleTimeString('ru-RU')}`);
+    }
+
+    async function loadState() {
+      const response = await fetch('/api/state');
+      const payload = await response.json();
+      state.positions = payload.config?.positions || {};
+      state.positionsLocked = Boolean(payload.config?.ui?.positions_locked);
+      els.lockBtn.textContent = `Закрепить точки: ${state.positionsLocked ? 'вкл' : 'выкл'}`;
+      setBackground(payload.background_url);
+      await loadHeatmap();
+    }
+
+    async function savePositions() {
+      setStatus('Сохранение позиций...');
+      const response = await fetch('/api/positions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ positions: state.positions, positions_locked: state.positionsLocked }),
+      });
+      const payload = await response.json();
+      if (!payload.ok) {
+        throw new Error(payload.error || 'Не удалось сохранить позиции');
+      }
+      setStatus(`Сохранено камер: ${payload.positions_saved}`);
+    }
+
+    async function uploadBackground(file) {
+      const formData = new FormData();
+      formData.append('background', file);
+      setStatus('Загрузка фоновой картинки...');
+      const response = await fetch('/api/upload_background', {
+        method: 'POST',
+        body: formData,
+      });
+      const payload = await response.json();
+      if (!payload.ok) {
+        throw new Error(payload.error || 'Не удалось загрузить фон');
+      }
+      setBackground(payload.background_url);
+      setStatus(`Фон обновлён: ${payload.background.original_name}`);
+    }
+
+    els.backgroundInput.addEventListener('change', async event => {
+      const [file] = event.target.files || [];
+      if (!file) return;
+      try {
+        await uploadBackground(file);
+      } catch (error) {
+        setStatus(error.message);
+      }
+    });
+
+    els.saveBtn.addEventListener('click', async () => {
+      try {
+        await savePositions();
+      } catch (error) {
+        setStatus(error.message);
+      }
+    });
+
+    els.reloadBtn.addEventListener('click', () => {
+      loadHeatmap().catch(error => setStatus(error.message));
+    });
+
+    els.lockBtn.addEventListener('click', () => {
+      state.positionsLocked = !state.positionsLocked;
+      els.lockBtn.textContent = `Закрепить точки: ${state.positionsLocked ? 'вкл' : 'выкл'}`;
+      renderMarkers();
+      savePositions().catch(error => setStatus(error.message));
+    });
+
+    els.metricSelect.addEventListener('change', renderAll);
+    els.radiusRange.addEventListener('input', drawHeatmap);
+    els.intensityRange.addEventListener('input', drawHeatmap);
+    window.addEventListener('resize', resizeCanvas);
+
+    loadState()
+      .then(() => resizeCanvas())
+      .catch(error => setStatus(error.message));
+  </script>
+</body>
+</html>

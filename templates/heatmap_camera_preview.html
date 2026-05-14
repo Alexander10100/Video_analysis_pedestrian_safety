@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Камера {{ camera_id }}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "Segoe UI", Tahoma, sans-serif; background: #0f172a; color: #e2e8f0; }
+    .layout { min-height: 100vh; display: grid; grid-template-rows: auto 1fr; }
+    .bar { padding: 12px 16px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .content { min-height: 0; display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 14px; padding: 14px; }
+    .stats-panel { min-height: 0; display: flex; flex-direction: column; gap: 12px; }
+    .card { border: 1px solid #334155; border-radius: 12px; background: rgba(15, 23, 42, 0.92); overflow: hidden; }
+    .card-header { padding: 12px 14px; border-bottom: 1px solid #334155; font-weight: 700; }
+    .table-wrap { max-height: calc(100vh - 236px); overflow: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 10px 12px; border-bottom: 1px solid rgba(51, 65, 85, 0.72); text-align: left; vertical-align: top; }
+    th { position: sticky; top: 0; z-index: 1; background: #111827; color: #cbd5e1; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+    td:last-child, th:last-child { text-align: right; }
+    .summary-table td:first-child { color: #cbd5e1; }
+    .summary-table td:nth-child(2) { font-weight: 700; }
+    .empty { padding: 14px; color: #94a3b8; font-size: 14px; }
+    .shell { position: relative; min-width: 0; border: 1px solid #334155; border-radius: 12px; overflow: hidden; background: #020617; }
+    #frameImage, #zoneCanvas { width: 100%; height: calc(100vh - 92px); display: block; object-fit: contain; }
+    #zoneCanvas { position: absolute; inset: 0; }
+    button { border: 0; border-radius: 10px; padding: 10px 12px; cursor: pointer; background: #2563eb; color: #fff; white-space: nowrap; }
+    .hint { color: #94a3b8; font-size: 14px; }
+    .badge { display: inline-flex; align-items: center; min-height: 24px; padding: 3px 8px; border-radius: 999px; background: #334155; color: #e2e8f0; font-size: 12px; font-weight: 700; text-align: left; }
+    .badge-road { background: #7c2d12; }
+    .badge-red { background: #991b1b; }
+    .badge-unknown { background: #475569; }
+
+    @media (max-width: 980px) {
+      .bar { align-items: flex-start; flex-direction: column; }
+      .content { grid-template-columns: 1fr; }
+      #frameImage, #zoneCanvas { height: 58vh; }
+      .table-wrap { max-height: 260px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <div class="bar">
+      <div>
+        <strong>{{ camera_id }}</strong>
+        <span class="hint">Первый кадр + сохраненные зоны камеры</span>
+      </div>
+      <button id="backBtn">Назад к heatmap</button>
+    </div>
+
+    <div class="content">
+      <aside class="stats-panel">
+        <section class="card">
+          <div class="card-header">Общая статистика</div>
+          <table class="summary-table">
+            <tbody id="summaryBody">
+              <tr><td colspan="3">Загрузка...</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="card">
+          <div class="card-header">Нарушения</div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Время</th>
+                  <th>Вид</th>
+                </tr>
+              </thead>
+              <tbody id="violationsBody">
+                <tr><td colspan="2">Загрузка...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </aside>
+
+      <div class="shell">
+        <img id="frameImage" alt="Кадр камеры">
+        <canvas id="zoneCanvas"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const CAMERA_ID = "{{ camera_id }}";
+    const img = document.getElementById('frameImage');
+    const canvas = document.getElementById('zoneCanvas');
+    const backBtn = document.getElementById('backBtn');
+    const summaryBody = document.getElementById('summaryBody');
+    const violationsBody = document.getElementById('violationsBody');
+    const state = { zones: [], imageBox: { x: 0, y: 0, width: 1, height: 1 } };
+
+    const VIOLATION_LABELS = {
+      road_trespass: 'Переход в неположенном месте',
+      red_light: 'Переход на красный',
+    };
+
+    function zoneColor(zone) {
+      const color = Array.isArray(zone.color) && zone.color.length === 3 ? zone.color : [0, 80, 220];
+      return `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
+    }
+
+    function resizeCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      const ratio = window.devicePixelRatio || 1;
+      canvas.width = Math.round(rect.width * ratio);
+      canvas.height = Math.round(rect.height * ratio);
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      computeImageBox();
+      drawZones();
+    }
+
+    function computeImageBox() {
+      const shell = canvas.getBoundingClientRect();
+      const nw = img.naturalWidth || shell.width;
+      const nh = img.naturalHeight || shell.height;
+      const scale = Math.min(shell.width / nw, shell.height / nh);
+      state.imageBox = {
+        x: (shell.width - nw * scale) / 2,
+        y: (shell.height - nh * scale) / 2,
+        width: nw * scale,
+        height: nh * scale,
+      };
+    }
+
+    function toCanvasPoint(point) {
+      return [
+        state.imageBox.x + point[0] * state.imageBox.width,
+        state.imageBox.y + point[1] * state.imageBox.height,
+      ];
+    }
+
+    function drawZones() {
+      const ctx = canvas.getContext('2d');
+      const rect = canvas.getBoundingClientRect();
+      ctx.clearRect(0, 0, rect.width, rect.height);
+      state.zones.forEach(zone => {
+        const polygon = Array.isArray(zone.polygon) ? zone.polygon : [];
+        if (polygon.length < 3) return;
+        ctx.beginPath();
+        polygon.forEach((p, i) => {
+          const [x, y] = toCanvasPoint(p);
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.closePath();
+        const stroke = zoneColor(zone);
+        ctx.strokeStyle = stroke;
+        ctx.fillStyle = stroke.replace('rgb', 'rgba').replace(')', ', 0.2)');
+        ctx.lineWidth = 2;
+        ctx.fill();
+        ctx.stroke();
+      });
+    }
+
+    function formatTime(timestamp) {
+      if (!timestamp) return '-';
+      const date = new Date(timestamp);
+      if (Number.isNaN(date.getTime())) return timestamp;
+      return date.toLocaleString('ru-RU', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      });
+    }
+
+    function violationLabel(type) {
+      return VIOLATION_LABELS[type] || type || 'Неизвестно';
+    }
+
+    function badgeClass(type) {
+      if (type === 'road_trespass') return 'badge-road';
+      if (type === 'red_light') return 'badge-red';
+      return 'badge-unknown';
+    }
+
+    function renderSummary(stats) {
+      const safeStats = stats || {};
+      const total = Number(safeStats.total || 0);
+      const road = safeStats.road_trespass || {};
+      const red = safeStats.red_light || {};
+
+      summaryBody.innerHTML = `
+        <tr>
+          <td>Всего нарушений</td>
+          <td>${total}</td>
+          <td>${total ? '100%' : '0%'}</td>
+        </tr>
+        <tr>
+          <td>Переход в неположенном</td>
+          <td>${Number(road.count || 0)}</td>
+          <td>${Number(road.percent || 0).toFixed(1)}%</td>
+        </tr>
+        <tr>
+          <td>Переход на красный</td>
+          <td>${Number(red.count || 0)}</td>
+          <td>${Number(red.percent || 0).toFixed(1)}%</td>
+        </tr>
+      `;
+    }
+
+    function renderViolations(violations) {
+      const rows = Array.isArray(violations) ? violations : [];
+      if (!rows.length) {
+        violationsBody.innerHTML = '<tr><td colspan="2" class="empty">Нарушений по этой камере нет</td></tr>';
+        return;
+      }
+
+      violationsBody.innerHTML = rows.map(item => `
+        <tr>
+          <td>${formatTime(item.timestamp)}</td>
+          <td><span class="badge ${badgeClass(item.violation_type)}">${violationLabel(item.violation_type)}</span></td>
+        </tr>
+      `).join('');
+    }
+
+    async function loadPreview() {
+      const res = await fetch(`/api/camera/${encodeURIComponent(CAMERA_ID)}/preview`);
+      const payload = await res.json();
+      if (!payload.ok || !payload.has_frame) {
+        throw new Error('Не найдено видео для камеры');
+      }
+      state.zones = payload.zones || [];
+      renderSummary(payload.violations?.stats);
+      renderViolations(payload.violations?.violations);
+      img.src = payload.frame_url;
+    }
+
+    img.addEventListener('load', resizeCanvas);
+    window.addEventListener('resize', resizeCanvas);
+    backBtn.addEventListener('click', () => { window.location.href = '/'; });
+    loadPreview().catch(error => { alert(error.message); });
+  </script>
+</body>
+</html>
