@@ -267,7 +267,7 @@ def load_yolo(model_key: str, device: str = "auto"):
     Поддерживаемые ключи:
       YOLOv8 стандартные:
         v8n, v8s, v8m, v8l, v8x
-        (обратная совместимость: n, s, m, l, x → v8*)
+        (обратная совместимость: n, s, m, l, x -> v8*)
 
       YOLOv8-P6 (1280px, 6-уровневый FPN — лучше для мелких объектов):
         v8n6, v8s6, v8m6, v8l6, v8x6
@@ -327,7 +327,7 @@ def load_yolo(model_key: str, device: str = "auto"):
     name = MODEL_MAP[model_key]
     resolved_device = _resolve_device(device)
     use_half = _use_half_for_device(resolved_device)
-    print(f"[INFO] Загружаем модель {name}  (ключ: {model_key})…")
+    print(f"[INFO] Загружаем модель {name}  (ключ: {model_key})...")
     print(f"[INFO] YOLO device: {resolved_device}, half: {use_half}")
 
     model = YOLO(name)
@@ -350,7 +350,7 @@ def enhance_frame(frame: np.ndarray, mode: str) -> np.ndarray:
 
     Режимы (--enhance):
       clahe  — локальная нормализация гистограммы (рекомендуется при тенях)
-      gamma  — глобальное осветление тёмных зон (γ=0.6)
+      gamma  — глобальное осветление тёмных зон (гамма=0.6)
       both   — gamma + clahe (максимальный эффект)
       none   — без предобработки (по умолчанию)
     """
@@ -574,12 +574,12 @@ def process_video(
     imgsz: int,
     detect_every: int,
     max_frames: int,
-    # ── Опции из v2 ───────────────────────────────────────────────────────────
+    # Опции из v2
     use_tile: bool = False,
     tile_top_ratio: float = 0.65,
     enhance: str = "none",
     debug_mode: bool = False,
-    # ── Опции из v1 ───────────────────────────────────────────────────────────
+    # Опции из v1
     violation_callback: Callable[[list, float], None] | None = None,
     preload_video: bool = False,
     writer_queue_size: int = 64,
@@ -603,12 +603,12 @@ def process_video(
     limit        = max_frames if max_frames > 0 else total_frames
 
     print(f"\n[INFO] Входной файл : {input_path.name}")
-    print(f"       Разрешение    : {frame_w}×{frame_h}  FPS: {src_fps:.2f}")
+    print(f"       Разрешение    : {frame_w}x{frame_h}  FPS: {src_fps:.2f}")
     print(f"       Всего кадров  : {total_frames}  Лимит: {limit}")
     print(f"       Выходной файл : {output_path}")
     print(f"       Детекция 1/{detect_every} кадров")
     if detect_every > 5:
-        print(f"       [WARN] detect-every={detect_every} — трекер будет терять людей! Рекомендуется ≤ 5")
+        print(f"       [WARN] detect-every={detect_every} — трекер будет терять людей! Рекомендуется <= 5")
     print(f"       Enhance       : {enhance.upper()}")
     if use_tile:
         cut_px = int(frame_h * tile_top_ratio)
@@ -623,7 +623,7 @@ def process_video(
     print(f"       Infer batch    : {inference_batch_size}")
     print(f"       Annotated mp4  : {'on' if write_annotated else 'off'}\n")
 
-    # ── Предзагрузка в RAM (v1) ───────────────────────────────────────────────
+    # Предзагрузка в RAM (v1)
     preloaded_frames: list[np.ndarray] | None = None
     if preload_video:
         t_preload = time.perf_counter()
@@ -641,7 +641,7 @@ def process_video(
             f"time: {time.perf_counter() - t_preload:.1f}s"
         )
 
-    # ── AgeClassifier ─────────────────────────────────────────────────────────
+    # AgeClassifier
     if age_clf is None or age_clf.frame_height != frame_h:
         if camera_id:
             age_clf = AgeClassifier.load_for_camera(camera_id, frame_h)
@@ -653,7 +653,7 @@ def process_video(
     age_tracker.reset()
     bbox_ema.reset()
 
-    # ── VideoWriter ───────────────────────────────────────────────────────────
+    # VideoWriter
     writer       = None
     async_writer = None
     if write_annotated:
@@ -667,7 +667,7 @@ def process_video(
             return {}
         async_writer = AsyncVideoWriter(writer, writer_queue_size) if writer_queue_size > 0 else None
 
-    # ── Статистика ────────────────────────────────────────────────────────────
+    # Статистика
     stat = {
         "total_frames":       0,
         "detected_frames":    0,
@@ -684,18 +684,18 @@ def process_video(
     cw_zones  = zone_mgr.crosswalk_zones()
     all_zones = zone_mgr.get_all()
 
-    # ── Async reader (v1) ─────────────────────────────────────────────────────
+    # Async reader (v1)
     async_reader = (
         AsyncVideoReader(cap, limit, reader_queue_size)
         if cap is not None and not preload_video and reader_queue_size > 0
         else None
     )
 
-    # ── Имя модели для легенды ────────────────────────────────────────────────
-    raw_name  = getattr(model, "model_name", None) or str(getattr(model, "ckpt_path", "?"))
-    model_label = Path(raw_name).stem   # "yolov8m.pt" → "yolov8m", "yolo11m" → "yolo11m"
+    # Имя модели для легенды
+    raw_name    = getattr(model, "model_name", None) or str(getattr(model, "ckpt_path", "?"))
+    model_label = Path(raw_name).stem
 
-    # ── track() kwargs — используется в поштучном режиме ─────────────────────
+    # track() kwargs — используется в поштучном режиме
     track_kwargs = {
         "classes": [0, 2, 3, 5, 7],   # людей + транспорт для фильтрации
         "conf":    conf,
@@ -713,18 +713,15 @@ def process_video(
     t_start    = time.perf_counter()
     t_progress = t_start
 
-    # ══════════════════════════════════════════════════════════════════════════
     # Режим batched inference (v1): preload + detect_every==1 + batch > 1
     # В batched режиме тайловая детекция и enhance НЕ применяются
     # (тайл несовместим с batch API; enhance — тоже).
-    # Для тайла / enhance используйте поштучный режим (без --preload-video).
-    # ══════════════════════════════════════════════════════════════════════════
     use_batched_inference = (
         preloaded_frames is not None
         and detect_every == 1
         and inference_batch_size > 1
-        and not use_tile        # тайл несовместим с batch
-        and enhance == "none"   # enhance несовместим с batch
+        and not use_tile
+        and enhance == "none"
     )
 
     if use_batched_inference:
@@ -867,12 +864,9 @@ def process_video(
                     end="", flush=True,
                 )
 
-    # ══════════════════════════════════════════════════════════════════════════
     # Поштучный режим — основной (с тайлом, enhance, debug, фильтром транспорта)
-    # ══════════════════════════════════════════════════════════════════════════
     else:
         while frame_idx < limit:
-            # Читаем кадр
             if preloaded_frames is not None:
                 frame = preloaded_frames[frame_idx]
             elif async_reader is not None:
@@ -891,10 +885,10 @@ def process_video(
 
                 t0 = time.perf_counter()
 
-                # ── Предобработка для детекции (v2) ──────────────────────────
+                # Предобработка для детекции (v2)
                 detect_frame = enhance_frame(frame, enhance)
 
-                # ── Основная детекция: люди + транспорт ──────────────────────
+                # Основная детекция: люди + транспорт
                 if _TORCH is not None:
                     with _TORCH.inference_mode():
                         results = model.track(detect_frame, **track_kwargs)[0]
@@ -903,7 +897,7 @@ def process_video(
 
                 elapsed_ms = (time.perf_counter() - t0) * 1000
 
-                # ── Тайловая детекция (v2) ────────────────────────────────────
+                # Тайловая детекция (v2)
                 tile_raw: list[dict] = []
                 if use_tile:
                     t1 = time.perf_counter()
@@ -921,7 +915,7 @@ def process_video(
                 if write_annotated and all_zones:
                     annotated = draw_zones(annotated, all_zones, tl_states)
 
-                # ── Первый проход: собираем боксы транспорта ──────────────────
+                # Первый проход: собираем боксы транспорта
                 vehicle_boxes: list[tuple] = []
                 if results.boxes is not None:
                     for box in results.boxes:
@@ -936,14 +930,14 @@ def process_video(
                 children_cnt = 0
                 active_tids: set[int] = set()
 
-                # ── [DEBUG] транспорт серыми рамками ─────────────────────────
+                # [DEBUG] транспорт серыми рамками
                 if debug_mode and write_annotated:
                     for vx1, vy1, vx2, vy2 in vehicle_boxes:
                         cv2.rectangle(annotated, (vx1, vy1), (vx2, vy2), (120, 120, 120), 1)
                         cv2.putText(annotated, "VEH", (vx1 + 2, vy1 + 14),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.4, (120, 120, 120), 1)
 
-                # ── Второй проход: люди из основной детекции ──────────────────
+                # Второй проход: люди из основной детекции
                 if results.boxes is not None:
                     for box in results.boxes:
                         cls_id = int(box.cls[0]) if box.cls is not None else -1
@@ -957,7 +951,7 @@ def process_video(
                         if tid >= 0:
                             active_tids.add(tid)
 
-                        # ── [DEBUG] raw bbox голубым ───────────────────────────
+                        # [DEBUG] raw bbox голубым
                         if debug_mode and write_annotated:
                             cv2.rectangle(annotated, (raw_x1, raw_y1), (raw_x2, raw_y2),
                                           (0, 255, 255), 1)
@@ -965,7 +959,7 @@ def process_video(
                                         (raw_x1 + 2, raw_y1 + 14),
                                         cv2.FONT_HERSHEY_SIMPLEX, 0.38, (0, 255, 255), 1)
 
-                        # ── Фильтрация людей внутри транспорта (v2) ───────────
+                        # Фильтрация людей внутри транспорта (v2)
                         if person_inside_vehicle(raw_x1, raw_y1, raw_x2, raw_y2, vehicle_boxes):
                             if debug_mode and write_annotated:
                                 cv2.rectangle(annotated, (raw_x1, raw_y1), (raw_x2, raw_y2),
@@ -992,7 +986,7 @@ def process_video(
                         ))
                         tile_flags.append(False)
 
-                # ── Тайловые боксы (только уникальные) ───────────────────────
+                # Тайловые боксы (только уникальные)
                 tile_new = _merge_tile_boxes(norm_boxes, tile_raw, frame_w, frame_h)
                 stat["tile_extra_persons"] += len(tile_new)
 
@@ -1013,7 +1007,7 @@ def process_video(
                     ))
                     tile_flags.append(True)
 
-                # ── Периодическая чистка мёртвых треков ──────────────────────
+                # Периодическая чистка мёртвых треков
                 if detect_cnt % _EVICT_EVERY == 0 and active_tids:
                     bbox_ema.evict(active_tids)
                     age_tracker.evict(active_tids)
@@ -1087,7 +1081,7 @@ def process_video(
                     end="", flush=True,
                 )
 
-    # ── Освобождение ресурсов ─────────────────────────────────────────────────
+    # Освобождение ресурсов
     if async_reader is not None:
         async_reader.close()
         cap = None
@@ -1114,7 +1108,7 @@ def _print_stats(stat: dict, input_path: Path, output_path: Path):
     real_fps = stat["total_frames"] / elapsed if elapsed > 0 else 0
 
     print()
-    print("═" * 58)
+    print("=" * 58)
     print(f"  Обработан файл   : {input_path.name}")
     if stat.get("annotated_written", True):
         print(f"  Записан файл     : {output_path}")
@@ -1130,7 +1124,7 @@ def _print_stats(stat: dict, input_path: Path, output_path: Path):
     print(f"    детей          : {stat['total_children']}")
     print(f"  Всего нарушений  : {stat['total_violations']}")
     print(f"  Доп. от тайла    : {stat.get('tile_extra_persons', 0)}")
-    print("═" * 58)
+    print("=" * 58)
     print()
 
 
@@ -1161,7 +1155,7 @@ def main():
     )
     src_group = parser.add_mutually_exclusive_group(required=True)
     src_group.add_argument("--video",  type=str, help="Путь к одному видеофайлу")
-    src_group.add_argument("--folder", type=str, help="Папка с видеофайлами (обработает все .mp4/.avi/…)")
+    src_group.add_argument("--folder", type=str, help="Папка с видеофайлами (обработает все .mp4/.avi/...)")
 
     parser.add_argument("--camera", type=str, default="",
                         help="ID камеры (для загрузки зон и калибровки возраста)")
@@ -1172,22 +1166,22 @@ def main():
         help=(
             "Модель детекции. Варианты:\n"
             "  YOLOv8:    v8n v8s v8m v8l v8x\n"
-            "  YOLOv8-P6: v8n6 v8s6 v8m6 v8l6 v8x6  ← лучше для мелких объектов\n"
+            "  YOLOv8-P6: v8n6 v8s6 v8m6 v8l6 v8x6  <- лучше для мелких объектов\n"
             "  YOLOv9:    v9c v9e\n"
             "  YOLOv10:   v10n v10s v10m v10l v10x\n"
             "  YOLO11:    v11n v11s v11m v11l v11x\n"
-            "  RT-DETR:   rtdetr-l rtdetr-x          ← при перекрытиях\n"
+            "  RT-DETR:   rtdetr-l rtdetr-x          <- при перекрытиях\n"
             "Рекомендуется: v8m6 или v11m"
         ),
     )
     parser.add_argument("--device",       type=str,   default="auto",
-                        help="YOLO device: auto, cpu, 0, 1, …")
+                        help="YOLO device: auto, cpu, 0, 1, ...")
     parser.add_argument("--conf",         type=float, default=0.3,
-                        help="Порог уверенности. Рекомендуется 0.25–0.35 для видеонаблюдения")
+                        help="Порог уверенности. Рекомендуется 0.25-0.35 для видеонаблюдения")
     parser.add_argument("--imgsz",        type=int,   default=1280,
                         help="Размер входа модели")
     parser.add_argument("--detect-every", type=int,   default=3,
-                        help="Детектировать каждый N-й кадр. Рекомендуется 1–5")
+                        help="Детектировать каждый N-й кадр. Рекомендуется 1-5")
     parser.add_argument("--max-frames",   type=int,   default=0,
                         help="Ограничить число обрабатываемых кадров (0 = всё видео)")
     parser.add_argument("--ema-alpha",    type=float, default=1.0,
@@ -1199,14 +1193,14 @@ def main():
             "Предобработка кадра перед детекцией:\n"
             "  none  — без предобработки\n"
             "  clahe — локальная нормализация контраста (лучший выбор при тенях)\n"
-            "  gamma — глобальное осветление (γ=0.6)\n"
+            "  gamma — глобальное осветление (гамма=0.6)\n"
             "  both  — gamma + clahe"
         ),
     )
     parser.add_argument("--tile",         action="store_true", default=False,
                         help="Тайловая детекция верхней части кадра (далёкие/мелкие объекты)")
     parser.add_argument("--tile-ratio",   type=float, default=0.65,
-                        help="Доля высоты кадра для тайла (0.4–0.8)")
+                        help="Доля высоты кадра для тайла (0.4-0.8)")
     parser.add_argument("--debug",        action="store_true", default=False,
                         help=(
                             "Режим отладки: raw bbox (голубой), "
@@ -1313,7 +1307,7 @@ def main():
                 total_stat[k] += stat.get(k, 0)
 
     if len(sources) > 1 and total_stat["total_frames"] > 0:
-        print("══════════════════════════════════════════════════════════")
+        print("=" * 58)
         print(f"  ИТОГО по {len(sources)} файлам")
         elapsed = total_stat["elapsed_sec"]
         det_f   = total_stat["detected_frames"] or 1
@@ -1323,7 +1317,7 @@ def main():
         print(f"  Людей (суммарно)   : {total_stat['total_persons']}")
         print(f"  Нарушений (сумм.)  : {total_stat['total_violations']}")
         print(f"  Доп. от тайла      : {total_stat['tile_extra_persons']}")
-        print("══════════════════════════════════════════════════════════")
+        print("=" * 58)
 
     print("[✓] Готово.")
 

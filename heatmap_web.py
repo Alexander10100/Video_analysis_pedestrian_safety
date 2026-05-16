@@ -103,6 +103,7 @@ def extract_report_summary(path: Path):
     by_type = summary.get("by_type", {}) if isinstance(summary, dict) else {}
     by_age = summary.get("by_age", {}) if isinstance(summary, dict) else {}
     timeline = payload.get("timeline", [])
+    raw_violations = payload.get("raw_violations", [])
 
     latest_ts = None
     if timeline and isinstance(timeline, list):
@@ -119,6 +120,7 @@ def extract_report_summary(path: Path):
         "unique_persons": unique_persons,
         "by_type": by_type if isinstance(by_type, dict) else {},
         "by_age": by_age if isinstance(by_age, dict) else {},
+        "raw_violations": raw_violations if isinstance(raw_violations, list) else [],
         "generated_at": generated_at,
         "report_ts": report_ts,
         "source_file": str(path.relative_to(BASE_DIR)),
@@ -167,6 +169,59 @@ def collect_camera_ids():
 
     ids.update(collect_reports_by_camera().keys())
     return sorted(ids)
+
+
+def violation_sort_key(violation):
+    raw_ts = violation.get("timestamp") if isinstance(violation, dict) else ""
+    try:
+        return datetime.fromisoformat(str(raw_ts))
+    except Exception:
+        return datetime.min
+
+
+def build_violation_stats(report):
+    by_type = report.get("by_type", {})
+    if not isinstance(by_type, dict):
+        by_type = {}
+
+    total = int(report.get("total_violations") or 0)
+    road_trespass = int(by_type.get("road_trespass") or 0)
+    red_light = int(by_type.get("red_light") or 0)
+
+    return {
+        "total": total,
+        "road_trespass": {
+            "count": road_trespass,
+            "percent": round((road_trespass / total) * 100, 1) if total else 0.0,
+        },
+        "red_light": {
+            "count": red_light,
+            "percent": round((red_light / total) * 100, 1) if total else 0.0,
+        },
+    }
+
+
+def camera_violation_payload(camera_id: str):
+    report = collect_reports_by_camera().get(camera_id, {})
+    raw_violations = report.get("raw_violations", [])
+    if not isinstance(raw_violations, list):
+        raw_violations = []
+
+    violations = []
+    for violation in sorted(raw_violations, key=violation_sort_key):
+        if not isinstance(violation, dict):
+            continue
+        violations.append({
+            "timestamp": violation.get("timestamp"),
+            "violation_type": violation.get("violation_type"),
+        })
+
+    return {
+        "stats": build_violation_stats(report),
+        "violations": violations,
+        "source_file": report.get("source_file"),
+        "generated_at": report.get("generated_at"),
+    }
 
 
 def resolve_video_folder(camera_id: str) -> Path | None:
@@ -294,12 +349,14 @@ def create_app():
             return jsonify({"ok": False, "error": "camera not found"}), 404
         video_path = first_video_for_camera(camera_id)
         zones = zones_for_camera(camera_id)
+        violations = camera_violation_payload(camera_id)
         return jsonify({
             "ok": True,
             "camera_id": camera_id,
             "has_frame": video_path is not None,
             "frame_url": f"/camera/{camera_id}/frame",
             "zones": zones,
+            "violations": violations,
         })
 
     @app.route("/camera/<camera_id>/frame")
