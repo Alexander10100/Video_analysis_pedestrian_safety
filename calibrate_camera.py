@@ -56,23 +56,23 @@ class AutoCalibrator:
         что в downstream-коде трактуется как взрослый (безопасная сторона).
     """
 
-    CHILD_RATIO   = 0.78
+    CHILD_RATIO = 0.78
     UNKNOWN_RATIO = 0.88
-    MIN_SAMPLES   = 12
-    N_BANDS       = 10
+    MIN_SAMPLES = 12
+    N_BANDS = 10
 
     def __init__(self, frame_height: int):
         self.frame_height = frame_height
-        self.band_h       = frame_height / self.N_BANDS
+        self.band_h = frame_height / self.N_BANDS
         self._samples: dict[int, list[float]] = defaultdict(list)
-        self._refs:    dict[int, float]       = {}
+        self._refs: dict[int, float] = {}
 
     def update(self, x1: int, y1: int, x2: int, y2: int):
         bbox_h = float(y2 - y1)
         if bbox_h < 10:
             return
         band = self._get_band(y2)
-        buf  = self._samples[band]
+        buf = self._samples[band]
         buf.append(bbox_h)
         if len(buf) > 300:
             self._samples[band] = buf[-200:]
@@ -81,7 +81,8 @@ class AutoCalibrator:
         updated = 0
         for band, heights in self._samples.items():
             if len(heights) >= self.MIN_SAMPLES:
-                self._refs[band] = float(np.percentile(heights, 60))
+                # 75-й вместо 60-го: устойчивее когда в кадре есть дети
+                self._refs[band] = float(np.percentile(heights, 75))
                 updated += 1
         return updated
 
@@ -100,8 +101,8 @@ class AutoCalibrator:
 
     def to_dict(self) -> dict:
         return {
-            "frame_height":  self.frame_height,
-            "refs":          {str(k): v for k, v in self._refs.items()},
+            "frame_height": self.frame_height,
+            "refs": {str(k): v for k, v in self._refs.items()},
             "samples_count": {str(k): len(v) for k, v in self._samples.items()},
         }
 
@@ -116,9 +117,9 @@ class AutoCalibrator:
         return {
             "ready_bands": ready,
             "total_bands": self.N_BANDS,
-            "percent":     int(ready / self.N_BANDS * 100),
-            "samples":     {b: len(v) for b, v in self._samples.items()},
-            "refs_px":     dict(self._refs),
+            "percent": int(ready / self.N_BANDS * 100),
+            "samples": {b: len(v) for b, v in self._samples.items()},
+            "refs_px": dict(self._refs),
         }
 
     def _get_band(self, y: int) -> int:
@@ -154,9 +155,9 @@ def load_model(size: str):
 def _progress_bar(current: int, total: int, width: int = 40) -> str:
     if total <= 0:
         return f"[{'?' * width}] ?%"
-    pct   = current / total
-    done  = int(pct * width)
-    bar   = "█" * done + "░" * (width - done)
+    pct = current / total
+    done = int(pct * width)
+    bar = "█" * done + "░" * (width - done)
     return f"[{bar}] {pct:.1%}  ({current}/{total})"
 
 
@@ -189,9 +190,9 @@ def calibrate_video(
         sys.exit(1)
 
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    video_fps    = cap.get(cv2.CAP_PROP_FPS) or 25.0
-    frame_h      = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    frame_w      = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    video_fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+    frame_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    frame_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
 
     limit = max_frames if max_frames > 0 else total_frames
     print(f"\n[INFO] Видео: {video_path.name}")
@@ -199,13 +200,13 @@ def calibrate_video(
     print(f"       Всего кадров: {total_frames}  Лимит: {limit}")
     print(f"       Камера: {camera_id}  Выход: {out_path}\n")
 
-    model      = load_model(model_size)
+    model = load_model(model_size)
     calibrator = AutoCalibrator(frame_height=frame_h)
 
-    frame_idx    = 0
-    detect_cnt   = 0
-    total_boxes  = 0
-    t_start      = time.perf_counter()
+    frame_idx = 0
+    detect_cnt = 0
+    total_boxes = 0
+    t_start = time.perf_counter()
     t_last_print = t_start
 
     # Детектируем каждые N кадров из FPS (≈ 2 кадра/сек из видео достаточно)
@@ -242,11 +243,11 @@ def calibrate_video(
         now = time.perf_counter()
         if now - t_last_print >= 2.0:
             t_last_print = now
-            elapsed      = now - t_start
-            rate         = frame_idx / elapsed if elapsed > 0 else 0
-            eta_sec      = (limit - frame_idx) / rate if rate > 0 else 0
-            eta_str      = f"{int(eta_sec // 60)}:{int(eta_sec % 60):02d}"
-            st           = calibrator.status()
+            elapsed = now - t_start
+            rate = frame_idx / elapsed if elapsed > 0 else 0
+            eta_sec = (limit - frame_idx) / rate if rate > 0 else 0
+            eta_str = f"{int(eta_sec // 60)}:{int(eta_sec % 60):02d}"
+            st = calibrator.status()
 
             print(f"\r  {_progress_bar(frame_idx, limit)}  "
                   f"boxes:{total_boxes}  "
@@ -292,23 +293,23 @@ def main():
     parser = argparse.ArgumentParser(
         description="Офлайн-калибровка AutoCalibrator по видеофайлу"
     )
-    parser.add_argument("--video",    required=True, type=str,
+    parser.add_argument("--video", required=True, type=str,
                         help="Путь к видеофайлу")
-    parser.add_argument("--camera",   required=True, type=str,
+    parser.add_argument("--camera", required=True, type=str,
                         help="ID камеры (например cam_01). "
                              "Определяет имя файла калибровки.")
-    parser.add_argument("--model",    type=str, default="s",
+    parser.add_argument("--model", type=str, default="s",
                         choices=["n", "s", "m", "l", "x"],
                         help="Размер модели YOLOv8. По умолчанию: s")
-    parser.add_argument("--conf",     type=float, default=0.40,
+    parser.add_argument("--conf", type=float, default=0.40,
                         help="Порог уверенности детекции. По умолчанию: 0.40")
-    parser.add_argument("--imgsz",    type=int, default=640,
+    parser.add_argument("--imgsz", type=int, default=640,
                         help="Размер входа модели. По умолчанию: 640")
     parser.add_argument("--max-frames", type=int, default=0,
                         help="Максимум кадров (0 = всё видео)")
     parser.add_argument("--calib-every", type=int, default=30,
                         help="Пересчитывать эталоны каждые N детекций. По умолчанию: 30")
-    parser.add_argument("--force",    action="store_true",
+    parser.add_argument("--force", action="store_true",
                         help="Перезаписать существующую калибровку")
 
     args = parser.parse_args()
@@ -322,14 +323,14 @@ def main():
         sys.exit(1)
 
     calibrate_video(
-        video_path   = path,
-        camera_id    = args.camera,
-        model_size   = args.model,
-        conf         = args.conf,
-        imgsz        = args.imgsz,
-        max_frames   = args.max_frames,
-        calib_every  = args.calib_every,
-        force        = args.force,
+        video_path=path,
+        camera_id=args.camera,
+        model_size=args.model,
+        conf=args.conf,
+        imgsz=args.imgsz,
+        max_frames=args.max_frames,
+        calib_every=args.calib_every,
+        force=args.force,
     )
 
 
