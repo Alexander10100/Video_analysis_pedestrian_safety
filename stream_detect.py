@@ -150,16 +150,15 @@ _clear_cache_event  = threading.Event()
 _frame_queue: queue.Queue = queue.Queue(maxsize=2)
 
 VIDEO_EXTS = {".mp4", ".avi", ".mov", ".mkv", ".ts", ".webm", ".m4v"}
-STREAM_WIDTH = 1280
-STREAM_HEIGHT = 720
-STREAM_FRAME_SIZE = STREAM_WIDTH * STREAM_HEIGHT * 3
-FFMPEG_PATH = Path(__file__).resolve().parent / "ffmpeg" / "bin" / "ffmpeg.exe"
 
 # ── FFmpeg-параметры для HLS/RTSP потоков ────────────────────────────────────
 STREAM_WIDTH      = 1280
 STREAM_HEIGHT     = 720
 STREAM_FRAME_SIZE = STREAM_WIDTH * STREAM_HEIGHT * 3
-FFMPEG_PATH = Path(__file__).resolve().parent / "ffmpeg" / "bin" / "ffmpeg.exe"
+if sys.platform == "win32":
+    FFMPEG_PATH = Path(__file__).resolve().parent / "ffmpeg" / "bin" / "ffmpeg.exe"
+else:
+    FFMPEG_PATH = "ffmpeg"
 
 # ── YOLO ──────────────────────────────────────────────────────────────────────
 _model      = None
