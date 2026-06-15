@@ -16,4 +16,13 @@ RUN pip install --no-cache-dir torch torchvision \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Pre-download default YOLO weights (n/s/m) so runtime never fetches a partial file.
+# l/x are large (~170/+MB) — they will auto-download on first use if selected.
+RUN python - <<'EOF'
+from ultralytics import YOLO
+for sz in ("n", "s", "m"):
+    YOLO(f"yolov8{sz}.pt")
+    print(f"yolov8{sz}.pt cached")
+EOF
+
 COPY . .
