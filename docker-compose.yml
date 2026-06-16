@@ -1,0 +1,38 @@
+services:
+  stream_detect:
+    build: .
+    # Для HLS/RTSP потока замените на:
+    # command: python stream_detect.py --url "https://..."
+    command: python stream_detect.py --folder /app/video
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./zones.json:/app/zones.json
+      - ./calibrations:/app/calibrations
+      - ./video:/app/video
+      - ./violations_log.jsonl:/app/violations_log.jsonl
+      - ./reports:/app/reports
+      - ./heatmap_assets:/app/heatmap_assets
+
+  heatmap:
+    build: .
+    command: python heatmap_web.py
+    ports:
+      - "5055:5055"
+    volumes:
+      - ./reports:/app/reports
+      - ./reports_batches:/app/reports_batches
+      - ./heatmap_assets:/app/heatmap_assets
+      - ./heatmap_camera_positions.json:/app/heatmap_camera_positions.json
+
+  camera_map:
+    build: .
+    command: python camera_map_web.py
+    ports:
+      - "5060:5060"
+    environment:
+      - YANDEX_MAPS_API_KEY=${YANDEX_MAPS_API_KEY:-}
+    volumes:
+      - ./zones.json:/app/zones.json
+      - ./video:/app/video
+      - ./camera_points.json:/app/camera_points.json
