@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Карта камер</title>
+  <style>
+    :root {
+      --bg: #eef2f6;
+      --panel: #ffffff;
+      --text: #1e293b;
+      --muted: #64748b;
+      --line: #d8e0ea;
+      --accent: #0f766e;
+      --accent-2: #1d4ed8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      background: linear-gradient(180deg, #f7fafc 0%, #eaf0f6 100%);
+      color: var(--text);
+    }
+    .layout { display: grid; grid-template-columns: 340px 1fr; min-height: 100vh; }
+    .sidebar {
+      background: rgba(255,255,255,0.94);
+      border-right: 1px solid var(--line);
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      overflow: auto;
+    }
+    h1 { margin: 0; font-size: 28px; line-height: 1.05; }
+    p { margin: 0; color: var(--muted); line-height: 1.45; }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 14px;
+    }
+    .row { display: grid; gap: 8px; }
+    label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+    select, button {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      padding: 11px 12px;
+      font: inherit;
+    }
+    button {
+      cursor: pointer;
+      background: linear-gradient(135deg, var(--accent), #159a8e);
+      color: #fff;
+      border: none;
+      font-weight: 600;
+    }
+    button.secondary { background: linear-gradient(135deg, var(--accent-2), #3b82f6); }
+    #map { width: 100%; height: 100vh; }
+    .camera-list { display: grid; gap: 8px; max-height: 42vh; overflow: auto; }
+    .camera-item {
+      background: #f8fbfd;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 10px 12px;
+    }
+    .camera-item strong { display: block; margin-bottom: 4px; }
+    .camera-item span { display: block; color: var(--muted); font-size: 13px; line-height: 1.35; }
+    .status { color: var(--muted); min-height: 20px; font-size: 13px; }
+    .warning { border-color: #f59e0b; background: #fff7ed; color: #9a3412; }
+    @media (max-width: 980px) {
+      .layout { grid-template-columns: 1fr; }
+      #map { height: 60vh; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div>
+        <h1>Карта камер</h1>
+        <p>Точки камер хранятся в `camera_points.json`. Маркер можно перетаскивать, клик по маркеру открывает страницу камеры с первым кадром и зонами.</p>
+      </div>
+
+      <div class="card row">
+        <label for="cameraSelect">Камера для размещения</label>
+        <select id="cameraSelect"></select>
+        <button id="placeBtn">Поставить выбранную камеру по клику на карту</button>
+        <button id="reloadBtn" class="secondary">Обновить список камер</button>
+        <div class="status" id="status"></div>
+      </div>
+
+      <div class="card warning" id="keyWarning" style="display:none">
+        Для загрузки Yandex Maps нужен `YANDEX_MAPS_API_KEY`.
+      </div>
+
+      <div class="card">
+        <div class="camera-list" id="cameraList"></div>
+      </div>
+    </aside>
+
+    <main>
+      <div id="map"></div>
+    </main>
+  </div>
+
+  <script>
+    window.APP_CONFIG = { yandexMapsApiKey: "{{ yandex_maps_api_key }}" };
+  </script>
+  <script>
+    const state = {
+      map: null,
+      cameras: [],
+      placemarks: new Map(),
+      placementMode: false,
+      selectedCameraId: '',
+      mapState: { center: [55.751244, 37.618423], zoom: 11 },
+    };
+
+    const els = {
+      cameraList: document.getElementById('cameraList'),
+      cameraSelect: document.getElementById('cameraSelect'),
+      keyWarning: document.getElementById('keyWarning'),
+      placeBtn: document.getElementById('placeBtn'),
+      reloadBtn: document.getElementById('reloadBtn'),
+      status: document.getElementById('status'),
+    };
+
+    function setStatus(text) { els.status.textContent = text || ''; }
+
+    function cameraHint(camera) {
+      const coords = camera.lat != null && camera.lon != null
+        ? `${Number(camera.lat).toFixed(6)}, ${Number(camera.lon).toFixed(6)}`
+        : 'координаты не заданы';
+      const video = camera.first_video || 'видео не найдено';
+      return `${coords} • ${video} • зон: ${camera.zones_count}`;
+    }
+
+    function renderCameraList() {
+      els.cameraList.innerHTML = '';
+      els.cameraSelect.innerHTML = '';
+      state.cameras.forEach(camera => {
+        const option = document.createElement('option');
+        option.value = camera.camera_id;
+        option.textContent = camera.camera_id;
+        els.cameraSelect.appendChild(option);
+
+        const item = document.createElement('div');
+        item.className = 'camera-item';
+        item.innerHTML = `<strong>${camera.camera_id}</strong><span>${cameraHint(camera)}</span>`;
+        item.addEventListener('click', () => {
+          if (camera.lat != null && camera.lon != null && state.map) {
+            state.map.setCenter([camera.lat, camera.lon], 15, { duration: 250 });
+          }
+        });
+        els.cameraList.appendChild(item);
+      });
+      state.selectedCameraId = els.cameraSelect.value || '';
+    }
+
+    async function fetchState() {
+      const response = await fetch('/api/map/state');
+      const payload = await response.json();
+      state.cameras = payload.cameras || [];
+      state.mapState = payload.map || state.mapState;
+      renderCameraList();
+      els.keyWarning.style.display = payload.api_key_present ? 'none' : 'block';
+      return payload;
+    }
+
+    function createPlacemark(camera) {
+      const placemark = new ymaps.Placemark(
+        [camera.lat, camera.lon],
+        {
+          balloonContentHeader: camera.camera_id,
+          balloonContentBody: cameraHint(camera),
+          hintContent: camera.camera_id,
+        },
+        { preset: 'islands#redCircleDotIcon', draggable: true }
+      );
+
+      placemark.events.add('click', () => {
+        window.location.href = `/camera/${encodeURIComponent(camera.camera_id)}`;
+      });
+
+      placemark.events.add('dragend', async () => {
+        const coords = placemark.geometry.getCoordinates();
+        await saveCameraPosition(camera.camera_id, coords[0], coords[1]);
+      });
+
+      state.map.geoObjects.add(placemark);
+      state.placemarks.set(camera.camera_id, placemark);
+    }
+
+    function syncPlacemark(camera) {
+      const existing = state.placemarks.get(camera.camera_id);
+      if (camera.lat == null || camera.lon == null) {
+        if (existing) {
+          state.map.geoObjects.remove(existing);
+          state.placemarks.delete(camera.camera_id);
+        }
+        return;
+      }
+
+      if (!existing) {
+        createPlacemark(camera);
+        return;
+      }
+
+      existing.geometry.setCoordinates([camera.lat, camera.lon]);
+      existing.properties.set('balloonContentBody', cameraHint(camera));
+    }
+
+    function syncMapMarkers() { state.cameras.forEach(syncPlacemark); }
+
+    async function saveCameraPosition(cameraId, lat, lon) {
+      const response = await fetch(`/api/camera/${encodeURIComponent(cameraId)}/position`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lat, lon }),
+      });
+      const payload = await response.json();
+      if (!payload.ok) throw new Error(payload.error || 'Не удалось сохранить координаты');
+      const index = state.cameras.findIndex(item => item.camera_id === cameraId);
+      if (index >= 0) state.cameras[index] = payload.camera;
+      renderCameraList();
+      syncMapMarkers();
+      setStatus(`Сохранены координаты ${cameraId}`);
+    }
+
+    async function saveMapViewport() {
+      if (!state.map) return;
+      await fetch('/api/map/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ map: { center: state.map.getCenter(), zoom: state.map.getZoom() } }),
+      });
+    }
+
+    async function initMap() {
+      const payload = await fetchState();
+      if (!window.APP_CONFIG.yandexMapsApiKey) {
+        setStatus('Добавьте YANDEX_MAPS_API_KEY и перезапустите приложение.');
+        return;
+      }
+
+      await new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = `https://api-maps.yandex.ru/2.1/?apikey=${encodeURIComponent(window.APP_CONFIG.yandexMapsApiKey)}&lang=ru_RU`;
+        script.onload = resolve;
+        script.onerror = () => reject(new Error('Не удалось загрузить API Yandex Maps'));
+        document.head.appendChild(script);
+      });
+
+      ymaps.ready(() => {
+        state.map = new ymaps.Map('map', {
+          center: payload.map.center || [55.751244, 37.618423],
+          zoom: payload.map.zoom || 11,
+          controls: ['zoomControl', 'fullscreenControl'],
+        });
+
+        state.map.events.add('boundschange', () => {
+          clearTimeout(window.__mapSaveTimer);
+          window.__mapSaveTimer = setTimeout(() => saveMapViewport().catch(() => {}), 400);
+        });
+
+        state.map.events.add('click', async event => {
+          if (!state.placementMode || !state.selectedCameraId) return;
+          const coords = event.get('coords');
+          try {
+            await saveCameraPosition(state.selectedCameraId, coords[0], coords[1]);
+            state.placementMode = false;
+            setStatus(`Камера ${state.selectedCameraId} размещена на карте`);
+          } catch (error) {
+            setStatus(error.message);
+          }
+        });
+
+        syncMapMarkers();
+      });
+    }
+
+    els.cameraSelect.addEventListener('change', event => { state.selectedCameraId = event.target.value; });
+    els.placeBtn.addEventListener('click', () => {
+      state.selectedCameraId = els.cameraSelect.value;
+      state.placementMode = true;
+      setStatus(`Кликните по карте, чтобы поставить ${state.selectedCameraId}`);
+    });
+    els.reloadBtn.addEventListener('click', async () => {
+      try {
+        await fetchState();
+        if (state.map) syncMapMarkers();
+        setStatus('Список камер обновлён');
+      } catch (error) {
+        setStatus(error.message);
+      }
+    });
+
+    initMap().catch(error => setStatus(error.message));
+  </script>
+</body>
+</html>
