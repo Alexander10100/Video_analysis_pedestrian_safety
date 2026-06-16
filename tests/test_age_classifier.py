@@ -1,4 +1,3 @@
-# tests/test_age_classifier.py
 import sys
 from pathlib import Path
 
@@ -42,7 +41,7 @@ class TestAgeClassifier:
         clf._refs = {3: 170.0, 7: 190.0}
 
         # Зона 5 — нет эталона, должен найти в зоне 3 или 7
-        label, conf = clf.classify(100, 400, 200, 520)  # y2=520 -> зона ~7
+        label, conf = clf.classify(100, 400, 200, 520)  
         assert label in ("adult", "child")
 
 
@@ -55,7 +54,7 @@ class TestAgeTracker:
 
         label, conf = tracker.update(1, "adult", 0.9)
         assert label == "adult"
-        assert conf == 0.45  # warmup_scale=0.5 * 0.9
+        assert conf == 0.45  
 
     def test_adult_to_child_flip(self):
         """Переход adult→child при достаточном количестве голосов"""
@@ -65,7 +64,7 @@ class TestAgeTracker:
         for _ in range(3):
             tracker.update(1, "adult", 0.9)
 
-        # 3 кадра child (должно переключиться)
+        # 3 кадра child 
         for _ in range(3):
             label, conf = tracker.update(1, "child", 0.9)
 
@@ -80,7 +79,7 @@ class TestAgeTracker:
 
         assert len(tracker) == 2
 
-        tracker.evict({1})  # трек 2 удаляем
+        tracker.evict({1})  
         assert len(tracker) == 1
 
     def test_reset(self):
