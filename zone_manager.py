@@ -22,41 +22,41 @@ from __future__ import annotations
 import json
 import threading
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
 import cv2
 import numpy as np
 
-from traffic_light import LIGHT_TYPE_PEDESTRIAN, LIGHT_TYPE_VEHICLE
+from traffic_light import LIGHT_TYPE_PEDESTRIAN
 
 ZONES_FILE = Path("zones.json")
 
 
 @dataclass
 class RoadZone:
-    id:                 str
-    label:              str
-    polygon:            list[list[float]]
-    type:               str               # "road" | "crosswalk"
-    color:              list[int]         # [R, G, B]
-    traffic_light_roi:  Optional[object] = None
-    has_light:          bool = False
-    parent_id:          Optional[str] = None
-    light_type:         str = LIGHT_TYPE_PEDESTRIAN  # "pedestrian" | "vehicle"
+    id: str
+    label: str
+    polygon: list[list[float]]
+    type: str               # "road" | "crosswalk"
+    color: list[int]         # [R, G, B]
+    traffic_light_roi: Optional[object] = None
+    has_light: bool = False
+    parent_id: Optional[str] = None
+    light_type: str = LIGHT_TYPE_PEDESTRIAN  # "pedestrian" | "vehicle"
 
     def to_dict(self) -> dict:
         return {
-            "id":                self.id,
-            "label":             self.label,
-            "polygon":           self.polygon,
-            "type":              self.type,
-            "color":             self.color,
+            "id": self.id,
+            "label": self.label,
+            "polygon": self.polygon,
+            "type": self.type,
+            "color": self.color,
             "traffic_light_roi": self.traffic_light_roi,
-            "has_light":         self.has_light,
-            "parent_id":         self.parent_id,
-            "light_type":        self.light_type,
+            "has_light": self.has_light,
+            "parent_id": self.parent_id,
+            "light_type": self.light_type,
         }
 
     @staticmethod
@@ -98,9 +98,9 @@ class ZoneManager:
     """Потокобезопасное хранилище зон с персистентностью."""
 
     def __init__(self, filepath: Path = ZONES_FILE):
-        self._lock  = threading.Lock()
+        self._lock = threading.Lock()
         self._zones: dict[str, RoadZone] = {}
-        self._file  = filepath
+        self._file = filepath
         self._load()
 
     # ── CRUD ──────────────────────────────────────────────────────────────────
@@ -180,7 +180,7 @@ class ZoneManager:
         try:
             raw = json.loads(self._file.read_text(encoding="utf-8"))
             if isinstance(raw, dict) and "cameras" in raw:
-                print(f"[zones] Обнаружен формат cameras-dict. Ожидайте /set_camera.")
+                print("[zones] Обнаружен формат cameras-dict. Ожидайте /set_camera.")
                 return
             if isinstance(raw, list):
                 with self._lock:
@@ -199,7 +199,7 @@ class ZoneManager:
         try:
             raw = json.loads(self._file.read_text(encoding="utf-8"))
             if isinstance(raw, dict) and "cameras" in raw:
-                cam_data   = raw["cameras"].get(camera_id, {})
+                cam_data = raw["cameras"].get(camera_id, {})
                 zones_list = cam_data.get("zones", [])
             elif isinstance(raw, list):
                 zones_list = raw
@@ -225,7 +225,7 @@ class ZoneManager:
             if isinstance(raw, dict) and "cameras" in raw:
                 return {
                     cid: {
-                        "label":       info.get("label", cid),
+                        "label": info.get("label", cid),
                         "zones_count": len(info.get("zones", [])),
                     }
                     for cid, info in raw["cameras"].items()

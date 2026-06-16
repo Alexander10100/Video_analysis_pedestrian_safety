@@ -143,7 +143,7 @@ def generate_report(violations: list, output: str, camera_id: str | None = None)
     print(f"   Всего записей нарушений : {report['total_violations']}")
     print(f"   Уникальных нарушителей  : {report['unique_persons']}")
     print(f"   Средняя уверенность     : {report['confidence']['average']:.1%}")
-    print(f"   Типы нарушений:")
+    print("   Типы нарушений:")
     for t, cnt in sorted(report["summary"]["by_type"].items(), key=lambda x: x[1], reverse=True):
         print(f"     • {t:15} : {cnt}")
 
@@ -156,10 +156,10 @@ def generate_report(violations: list, output: str, camera_id: str | None = None)
     print(f"\n[✓] Отчёт успешно сохранён → {output}")
     print(f"   Камера          : {camera_id or 'Все камеры'}")
     print(f"   Всего нарушений : {report['total_violations']}")
-    print(f"   Типы нарушений:")
+    print("   Типы нарушений:")
     for t, cnt in report["summary"]["by_type"].items():
         print(f"     • {t:15} : {cnt}")
-    print(f"   По возрасту:")
+    print("   По возрасту:")
     for age, cnt in report["summary"]["by_age"].items():
         print(f"     • {age:15} : {cnt}")
 
