@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-FROM python:3.11-slim
+FROM python:3.11-slim AS base
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
@@ -32,3 +32,12 @@ for sz in ("n", "s", "m"):
 EOF
 
 COPY . .
+
+FROM base AS stream_detect
+CMD ["python", "stream_detect.py", "--folder", "/app/video"]
+
+FROM base AS heatmap
+CMD ["python", "heatmap_web.py"]
+
+FROM base AS camera_map
+CMD ["python", "camera_map_web.py"]
