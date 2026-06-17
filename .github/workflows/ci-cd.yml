@@ -53,18 +53,19 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push latest images
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          IMAGE_TAG: latest
-        run: |
-          docker compose build
-          docker compose push
-
-      - name: Build and push commit images
+      - name: Build and push images
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
-          export IMAGE_TAG="sha-${GITHUB_SHA::12}"
-          docker compose build
-          docker compose push
+          IMAGE_SHA="sha-${GITHUB_SHA::12}"
+          docker buildx build \
+            --push \
+            --cache-from type=gha \
+            --cache-to type=gha,mode=max \
+            --tag "${DOCKERHUB_USERNAME}/video-analysis-pedestrian-safety-stream-detect:latest" \
+            --tag "${DOCKERHUB_USERNAME}/video-analysis-pedestrian-safety-stream-detect:${IMAGE_SHA}" \
+            --tag "${DOCKERHUB_USERNAME}/video-analysis-pedestrian-safety-heatmap:latest" \
+            --tag "${DOCKERHUB_USERNAME}/video-analysis-pedestrian-safety-heatmap:${IMAGE_SHA}" \
+            --tag "${DOCKERHUB_USERNAME}/video-analysis-pedestrian-safety-camera-map:latest" \
+            --tag "${DOCKERHUB_USERNAME}/video-analysis-pedestrian-safety-camera-map:${IMAGE_SHA}" \
+            .
