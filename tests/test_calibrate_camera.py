@@ -1,4 +1,3 @@
-# tests/test_calibrate_camera.py
 import sys
 from pathlib import Path
 
