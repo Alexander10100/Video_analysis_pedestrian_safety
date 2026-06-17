@@ -434,8 +434,10 @@ def draw_person_boxes(
 def _iou(a: tuple, b: tuple) -> float:
     ax1, ay1, ax2, ay2 = a
     bx1, by1, bx2, by2 = b
-    ix1 = max(ax1, bx1); iy1 = max(ay1, by1)
-    ix2 = min(ax2, bx2); iy2 = min(ay2, by2)
+    ix1 = max(ax1, bx1)
+    iy1 = max(ay1, by1)
+    ix2 = min(ax2, bx2)
+    iy2 = min(ay2, by2)
     iw = max(0, ix2 - ix1)
     ih = max(0, iy2 - iy1)
     inter = iw * ih
@@ -614,9 +616,9 @@ def process_video(
         cut_px = int(frame_h * tile_top_ratio)
         print(f"       Тайл          : ВКЛ  (верхние {tile_top_ratio:.0%} = {cut_px}px)")
     else:
-        print(f"       Тайл          : ВЫКЛ (добавь --tile для мелких/далёких объектов)")
+        print("       Тайл          : ВЫКЛ (добавь --tile для мелких/далёких объектов)")
     if debug_mode:
-        print(f"       [DEBUG]       : ВКЛ — raw bbox (голубой), отброшен (красный), транспорт (серый)")
+        print("       [DEBUG]       : ВКЛ — raw bbox (голубой), отброшен (красный), транспорт (серый)")
     print(f"       Preload RAM    : {'on' if preload_video else 'off'}")
     print(f"       Reader queue   : {reader_queue_size if not preload_video else 0}")
     print(f"       Writer queue   : {writer_queue_size}")

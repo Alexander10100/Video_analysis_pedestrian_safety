@@ -104,8 +104,6 @@ def _mask_area(hsv: np.ndarray, lo: tuple, hi: tuple) -> int:
     mask = cv2.morphologyEx(mask, cv2.MORPH_DILATE, kernel, iterations=1)
     return int(cv2.countNonZero(mask))
 
-    if cv2.countNonZero(lamp_core) < MIN_TOTAL_PIXELS:
-        return None
 
 def _sum_ranges(hsv: np.ndarray, ranges: list[tuple]) -> int:
     return sum(_mask_area(hsv, lo, hi) for lo, hi in ranges)
@@ -259,7 +257,6 @@ class TrafficLightState:
                   for s in (STATE_RED, STATE_GREEN, STATE_YELLOW, STATE_UNKNOWN)}
         best = max(counts, key=counts.__getitem__)
         self.confidence = counts[best] / len(self._history)
-        prev = self.state
         self.state = best
         if pedestrian_allowed(best, light_type):
             self.green_until = time.time() + GREEN_GRACE_SECONDS
