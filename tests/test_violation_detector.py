@@ -1,3 +1,4 @@
+# tests/test_violation_detector.py
 import sys
 from pathlib import Path
 
@@ -36,11 +37,11 @@ class TestPersonInsideVehicle:
         """Пользовательский порог перекрытия"""
         vehicle_boxes = [(200, 200, 400, 400)]
 
-        # Человек внутри машины с низким порогом True
+        # Человек внутри машины с низким порогом -> True
         result = person_inside_vehicle(210, 210, 390, 390, vehicle_boxes, overlap_thresh=0.3)
         assert result is True
 
-        # Человек снаружи машины False
+        # Человек снаружи машины -> False
         result = person_inside_vehicle(100, 100, 150, 150, vehicle_boxes, overlap_thresh=0.3)
         assert result is False
 
@@ -52,7 +53,7 @@ class TestPersonInsideVehicle:
         result = person_inside_vehicle(10, 10, 90, 90, vehicle_boxes, overlap_thresh=0.5)
         assert result is True
 
-        # Человек полностью снаружи
+        # Человек полностью снаружи (выше машины)
         result = person_inside_vehicle(10, -50, 90, -10, vehicle_boxes, overlap_thresh=0.5)
         assert result is False
 
@@ -64,7 +65,7 @@ class TestPersonInsideVehicle:
         """Несколько машин рядом"""
         vehicle_boxes = [(100, 100, 200, 200), (300, 100, 400, 200), (500, 100, 600, 200)]
 
-        # Человек внутри машины 
+        # Человек внутри машины 2
         result = person_inside_vehicle(310, 110, 390, 190, vehicle_boxes)
         assert result is True
 
