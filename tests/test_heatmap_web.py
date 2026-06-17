@@ -1,4 +1,3 @@
-# tests/test_heatmap_web.py
 import sys
 from pathlib import Path
 import json
@@ -29,7 +28,6 @@ from heatmap_web import (
 
 
 class TestHeatmapWeb:
-    """Тесты для heatmap_web.py"""
 
     def test_load_json_existing(self, tmp_path):
         """Загрузка существующего JSON"""
