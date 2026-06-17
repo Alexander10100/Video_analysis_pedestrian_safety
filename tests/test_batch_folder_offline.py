@@ -1,4 +1,3 @@
-# tests/test_batch_folder_offline.py
 import sys
 from pathlib import Path
 import json
@@ -25,7 +24,6 @@ from batch_folder_offline import (
 
 
 class TestBatchFolderOffline:
-    """Тесты для batch_folder_offline.py"""
 
     def test_list_video_files(self, tmp_path):
         """Список видеофайлов в папке"""
