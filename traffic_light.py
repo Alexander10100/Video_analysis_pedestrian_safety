@@ -1,5 +1,26 @@
 """
 traffic_light.py — Определение цвета светофора по ROI кадра.
+
+Типы светофоров (light_type в RoadZone):
+  "pedestrian" — пешеходный.  Зелёный = можно идти, красный = нарушение.
+  "vehicle"    — автомобильный (едет НАВСТРЕЧУ пешеходам).
+                 Зелёный для машин = пешеходам ЗАПРЕЩЕНО.
+                 Красный для машин = пешеходам РАЗРЕШЕНО (инверсия).
+
+── Исправление: ложный зелёный из-за цвета корпуса светофора ────────────────
+
+Проблема: светофор с зелёным металлическим корпусом. Широкие HSV-диапазоны
+зелёного захватывали краску корпуса, которая занимала бо́льшую площадь чем
+горящий огонь → классификатор всегда видел «зелёный».
+
+Решение — двухэтапный анализ:
+  1. Находим «lamp core» — компактную область с наивысшим score=sat×val,
+     ИСКЛЮЧАЯ доминирующий цвет фона (зелёный корпус).
+     Используем порог 35% от пикового score — это выделяет светящийся огонь.
+  2. Классифицируем ТОЛЬКО пиксели lamp core, а не весь ROI.
+
+Это нечувствительно к цвету корпуса светофора (зелёный, серый, жёлтый),
+к надписям на кадре (оверлей «ЗЕЛЁНЫЙ» / «Переход») и к фону за светофором.
 """
 
 from __future__ import annotations
@@ -12,25 +33,32 @@ import cv2
 import numpy as np
 
 
-# HSV-диапазоны цветов светофора
+# ── HSV-диапазоны цветов светофора ────────────────────────────────────────────
+# Только горящая лампа: высокая насыщенность + яркость.
+# Тусклые варианты убраны — они создавали ложные срабатывания на корпусе.
+
 _RED_RANGES = [
-    ((0, 120, 80), (15, 255, 255)),
-    ((155, 120, 80), (180, 255, 255)),
+    ((0, 120, 80), (15, 255, 255)),   # красный + оранжево-красный (hue 0-15, реальные светофоры дают сдвиг)
+    ((155, 120, 80), (180, 255, 255)),   # пурпурно-красный
 ]
 
 _YELLOW_RANGES = [
+    # жёлтый / оранжево-жёлтый LED (начинается с 16 чтобы не перекрываться с красным)
     ((16, 100, 80), (38, 255, 255)),
 ]
 
 _GREEN_RANGES = [
-    ((40, 80, 80), (95, 255, 255)),
+    ((40, 80, 80), (95, 255, 255)),    # зелёный LED — до hue=95 т.к. реальные светофоры дают hue=86-92
 ]
 
+# Hue-диапазоны для маскировки «фона» при поиске lamp core.
+# Зелёный корпус (hue 45-75) исключается из поиска пика.
+# Если корпус другого цвета — подберите по своей камере.
 _BODY_HUE_RANGES = [
-    (45, 75),
+    (45, 75),    # зелёный металл корпуса
 ]
 
-# Публичные константы состояния
+# ── Публичные константы состояния ─────────────────────────────────────────────
 STATE_RED = "red"
 STATE_GREEN = "green"
 STATE_YELLOW = "yellow"
@@ -39,13 +67,16 @@ STATE_UNKNOWN = "unknown"
 LIGHT_TYPE_PEDESTRIAN = "pedestrian"
 LIGHT_TYPE_VEHICLE = "vehicle"
 
-# Параметры
+# ── Параметры ─────────────────────────────────────────────────────────────────
 GREEN_GRACE_SECONDS = 5.0
 DEFAULT_CACHE_FRAMES = 2
 VOTE_WINDOW = 7
 MIN_AREA_RATIO = 0.15
 MIN_TOTAL_PIXELS = 10
 MIN_ROI_DIM = 6
+
+# Доля от пикового score для выделения lamp core.
+# 0.35 = нижняя граница «горящая лампа». Уменьшить до 0.20 для тусклых LED.
 LAMP_CORE_THRESHOLD = 0.35
 
 _STATE_PRIORITY = {
@@ -62,6 +93,8 @@ def pedestrian_allowed(raw_state: str, light_type: str) -> bool:
     return raw_state == STATE_GREEN
 
 
+# ── Внутренние утилиты ────────────────────────────────────────────────────────
+
 def _mask_area(hsv: np.ndarray, lo: tuple, hi: tuple) -> int:
     mask = cv2.inRange(hsv,
                        np.array(lo, dtype=np.uint8),
@@ -71,6 +104,8 @@ def _mask_area(hsv: np.ndarray, lo: tuple, hi: tuple) -> int:
     mask = cv2.morphologyEx(mask, cv2.MORPH_DILATE, kernel, iterations=1)
     return int(cv2.countNonZero(mask))
 
+    if cv2.countNonZero(lamp_core) < MIN_TOTAL_PIXELS:
+        return None
 
 def _sum_ranges(hsv: np.ndarray, ranges: list[tuple]) -> int:
     return sum(_mask_area(hsv, lo, hi) for lo, hi in ranges)
@@ -86,10 +121,22 @@ def _enhance_roi(roi: np.ndarray) -> np.ndarray:
 
 def _find_lamp_core_mask(hsv: np.ndarray,
                          body_hue_ranges: list[tuple[int, int]]) -> np.ndarray | None:
+    """
+    Выделить маску «горящего огня» внутри ROI.
+
+    Алгоритм:
+      1. score = saturation × value — высокий у ярких насыщенных пикселей (лампа).
+      2. Маскируем пиксели с «фоновым» цветом (корпус, надписи).
+      3. Находим пик score → центр горящего огня.
+      4. Возвращаем маску пикселей с score > LAMP_CORE_THRESHOLD × peak_score.
+
+    Возвращает None если пика не найдено (ROI слишком маленький или монохромный).
+    """
     sat = hsv[:, :, 1].astype(np.float32)
     val = hsv[:, :, 2].astype(np.float32)
     score = sat * val
 
+    # Маска «фона» по hue
     hue = hsv[:, :, 0]
     body_mask = np.zeros(hue.shape, dtype=bool)
     for lo, hi in body_hue_ranges:
@@ -99,12 +146,13 @@ def _find_lamp_core_mask(hsv: np.ndarray,
     score_fg[body_mask] = 0.0
 
     peak = float(score_fg.max())
-    if peak < 1000:
+    if peak < 1000:   # слишком мало сигнала — нет яркой лампы
         return None
 
     threshold = peak * LAMP_CORE_THRESHOLD
     lamp_core = (score_fg >= threshold).astype(np.uint8) * 255
 
+    # Морфологическое закрытие — убрать шум
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
     lamp_core = cv2.morphologyEx(lamp_core, cv2.MORPH_CLOSE, kernel, iterations=1)
 
@@ -115,6 +163,16 @@ def _find_lamp_core_mask(hsv: np.ndarray,
 
 
 def classify_roi(roi: np.ndarray) -> tuple[str, float, dict]:
+    """
+    Определить цвет горящего огня светофора в ROI.
+
+    Возвращает:
+        (state, confidence, debug)
+        state:      STATE_RED | STATE_GREEN | STATE_YELLOW | STATE_UNKNOWN
+        confidence: 0.0 .. 1.0
+        debug:      {'red': N, 'yellow': N, 'green': N, 'total': N,
+                     'method': 'lamp_core' | 'full_roi'}
+    """
     empty_debug = {"red": 0, "yellow": 0, "green": 0, "total": 0, "method": "none"}
 
     if roi is None or roi.size == 0:
@@ -124,6 +182,7 @@ def classify_roi(roi: np.ndarray) -> tuple[str, float, dict]:
     if max(h, w) < MIN_ROI_DIM:
         return STATE_UNKNOWN, 0.0, empty_debug
 
+    # Масштаб
     scale = min(1.0, 120 / max(h, w, 1))
     if scale < 1.0:
         roi = cv2.resize(roi,
@@ -133,9 +192,11 @@ def classify_roi(roi: np.ndarray) -> tuple[str, float, dict]:
     roi_enh = _enhance_roi(roi)
     hsv = cv2.cvtColor(roi_enh, cv2.COLOR_BGR2HSV)
 
+    # ── Попытка 1: lamp core — анализируем только горящий огонь ──────────────
     lamp_mask = _find_lamp_core_mask(hsv, _BODY_HUE_RANGES)
 
     if lamp_mask is not None:
+        # Считаем цветовые площади ТОЛЬКО внутри lamp_mask
         hsv_masked = cv2.bitwise_and(hsv, hsv, mask=lamp_mask)
         red_area = _sum_ranges(hsv_masked, _RED_RANGES)
         yellow_area = _sum_ranges(hsv_masked, _YELLOW_RANGES)
@@ -143,6 +204,7 @@ def classify_roi(roi: np.ndarray) -> tuple[str, float, dict]:
         total = red_area + yellow_area + green_area
         method = "lamp_core"
     else:
+        # ── Попытка 2: fallback — анализируем весь ROI (старое поведение) ────
         red_area = _sum_ranges(hsv, _RED_RANGES)
         yellow_area = _sum_ranges(hsv, _YELLOW_RANGES)
         green_area = _sum_ranges(hsv, _GREEN_RANGES)
@@ -179,6 +241,8 @@ def _aggregate_states(states: list[str]) -> str:
     return max(states, key=lambda s: _STATE_PRIORITY.get(s, 0))
 
 
+# ── Хранилище состояния одного ROI ───────────────────────────────────────────
+
 @dataclass
 class TrafficLightState:
     light_id: str
@@ -195,6 +259,7 @@ class TrafficLightState:
                   for s in (STATE_RED, STATE_GREEN, STATE_YELLOW, STATE_UNKNOWN)}
         best = max(counts, key=counts.__getitem__)
         self.confidence = counts[best] / len(self._history)
+        prev = self.state
         self.state = best
         if pedestrian_allowed(best, light_type):
             self.green_until = time.time() + GREEN_GRACE_SECONDS
@@ -205,6 +270,8 @@ class TrafficLightState:
             return True
         return time.time() < self.green_until
 
+
+# ── Агрегированное состояние зоны ─────────────────────────────────────────────
 
 class AggregatedTLState:
     __slots__ = ("zone_id", "state", "confidence", "light_type",
@@ -224,7 +291,13 @@ class AggregatedTLState:
         return self.green_grace
 
 
+# ── Главный анализатор ────────────────────────────────────────────────────────
+
 class TrafficLightAnalyzer:
+    """
+    Менеджер состояний светофоров для всех crosswalk-зон.
+    """
+
     def __init__(self, cache_frames: int = DEFAULT_CACHE_FRAMES):
         self._states: dict[str, list[TrafficLightState]] = {}
         self._zone_types: dict[str, str] = {}

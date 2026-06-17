@@ -1,0 +1,27 @@
+# YOLOv8 модели — скачиваются автоматически при первом запуске
+*.pt
+
+# Видеофайлы и результаты — подключаются через volumes
+video/
+annotated_batches/
+reports/
+reports_batches/
+
+# Windows FFmpeg бинарник
+ffmpeg/
+
+# Рантайм-данные
+*.jsonl
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Git
+.git/
+.gitignore
+
+# Cursor / IDE
+.cursor/
