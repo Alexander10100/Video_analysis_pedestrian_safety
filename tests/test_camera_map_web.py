@@ -1,4 +1,3 @@
-# tests/test_camera_map_web.py
 import sys
 from pathlib import Path
 import json
@@ -24,7 +23,6 @@ from camera_map_web import (
 
 
 class TestCameraMapWeb:
-    """Тесты для camera_map_web.py"""
 
     def test_load_json_existing(self, tmp_path):
         """Загрузка существующего JSON"""
@@ -296,7 +294,6 @@ class TestCameraMapWeb:
         """Очистка ROI: несколько ROI"""
         rois = [[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8]]
         result = _clean_roi(rois)
-        # Проверяем структуру, а не точные значения (функция может их корректировать)
         assert len(result) == 2
         assert len(result[0]) == 4
         assert len(result[1]) == 4
