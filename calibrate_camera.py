@@ -180,7 +180,7 @@ def calibrate_video(
 
     if out_path.exists() and not force:
         print(f"[INFO] Калибровка уже существует: {out_path}")
-        print(f"       Используйте --force для перезаписи.")
+        print("       Используйте --force для перезаписи.")
         data = json.loads(out_path.read_text(encoding="utf-8"))
         return AutoCalibrator.from_dict(data)
 

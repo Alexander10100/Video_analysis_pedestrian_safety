@@ -48,7 +48,6 @@ import json
 from collections import Counter, deque
 from pathlib import Path
 
-import numpy as np
 
 
 CALIBRATIONS_DIR = Path("calibrations")

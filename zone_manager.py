@@ -22,14 +22,14 @@ from __future__ import annotations
 import json
 import threading
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
 import cv2
 import numpy as np
 
-from traffic_light import LIGHT_TYPE_PEDESTRIAN, LIGHT_TYPE_VEHICLE
+from traffic_light import LIGHT_TYPE_PEDESTRIAN
 
 ZONES_FILE = Path("zones.json")
 
@@ -180,7 +180,7 @@ class ZoneManager:
         try:
             raw = json.loads(self._file.read_text(encoding="utf-8"))
             if isinstance(raw, dict) and "cameras" in raw:
-                print(f"[zones] Обнаружен формат cameras-dict. Ожидайте /set_camera.")
+                print("[zones] Обнаружен формат cameras-dict. Ожидайте /set_camera.")
                 return
             if isinstance(raw, list):
                 with self._lock:

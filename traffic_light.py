@@ -28,7 +28,6 @@ from __future__ import annotations
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Optional
 
 import cv2
 import numpy as np
@@ -258,7 +257,6 @@ class TrafficLightState:
                   for s in (STATE_RED, STATE_GREEN, STATE_YELLOW, STATE_UNKNOWN)}
         best = max(counts, key=counts.__getitem__)
         self.confidence = counts[best] / len(self._history)
-        prev = self.state
         self.state = best
         if pedestrian_allowed(best, light_type):
             self.green_until = time.time() + GREEN_GRACE_SECONDS

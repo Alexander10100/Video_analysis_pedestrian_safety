@@ -15,9 +15,8 @@ violation_detector.py — Определение нарушений ПДД пе�
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from functools import lru_cache
-from typing import Optional
 
 import cv2
 import numpy as np
