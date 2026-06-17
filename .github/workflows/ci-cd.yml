@@ -2,9 +2,11 @@ name: CI - Tests & Linter
 
 on:
   push:
-    branches: [ main, master, develop ]
+    branches:
+      - '**'  # все ветки
   pull_request:
-    branches: [ main, master ]
+    branches:
+      - '**'  # все ветки
   workflow_dispatch:
 
 jobs:
