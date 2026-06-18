@@ -60,12 +60,27 @@ jobs:
           IMAGE_SHA="sha-${GITHUB_SHA::12}"
           docker buildx build \
             --push \
+            --target stream_detect \
             --cache-from type=gha \
             --cache-to type=gha,mode=max \
             --tag "${DOCKERHUB_USERNAME}/video-analysis-pedestrian-safety-stream-detect:latest" \
             --tag "${DOCKERHUB_USERNAME}/video-analysis-pedestrian-safety-stream-detect:${IMAGE_SHA}" \
+            .
+
+          docker buildx build \
+            --push \
+            --target heatmap \
+            --cache-from type=gha \
+            --cache-to type=gha,mode=max \
             --tag "${DOCKERHUB_USERNAME}/video-analysis-pedestrian-safety-heatmap:latest" \
             --tag "${DOCKERHUB_USERNAME}/video-analysis-pedestrian-safety-heatmap:${IMAGE_SHA}" \
+            .
+
+          docker buildx build \
+            --push \
+            --target camera_map \
+            --cache-from type=gha \
+            --cache-to type=gha,mode=max \
             --tag "${DOCKERHUB_USERNAME}/video-analysis-pedestrian-safety-camera-map:latest" \
             --tag "${DOCKERHUB_USERNAME}/video-analysis-pedestrian-safety-camera-map:${IMAGE_SHA}" \
             .
