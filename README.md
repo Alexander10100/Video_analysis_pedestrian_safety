@@ -79,24 +79,6 @@ docker pull ancici/video-analysis-pedestrian-safety-heatmap:latest
 
 ---
 
-### 3. Подготовить директории
-
-Создайте необходимые каталоги:
-
-```bash
-mkdir -p reports
-mkdir -p reports_batches
-mkdir -p heatmap_assets
-```
-
-Создайте файл настроек:
-
-```bash
-touch heatmap_camera_positions.json
-```
-
----
-
 ### 4. Запустить контейнер
 
 ```bash
