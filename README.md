@@ -8,7 +8,7 @@
 
 - **Детекция людей** — YOLOv8 с трекингом объектов (модели n / s / m / l / x)
 - **Нарушения ПДД** — переход дороги вне пешеходного перехода, проход на красный свет
-- **Классификация возраста** — разделение на взрослых и детей с temporal-сглаживанием
+- **Классификация возраста** — разделение на взрослых и детей
 - **Зоны разметки** — настраиваемые полигоны дорог и пешеходных переходов на камеру
 - **Тепловая карта** — веб-интерфейс сводной статистики нарушений по всем камерам
 - **Карта камер** — географическое расположение камер на Яндекс.Картах
@@ -57,172 +57,142 @@ echo '{"cameras":{}}' > zones.json
 
 ---
 
-## Запуск в Docker
+## Запуск через Docker
 
-### Предварительные требования
+### 1. Установить Docker
 
-- Docker Engine 24+ и Docker Compose v2
-- Образы опубликованы на Docker Hub или собраны локально (см. ниже)
-
-### Переменные окружения
-
-Создайте файл `.env` в корне проекта:
-
-```dotenv
-# Имя пользователя на Docker Hub (для готовых образов)
-# Если собираете локально — оставьте пустым или укажите "local"
-DOCKERHUB_USERNAME=your_dockerhub_username
-
-# Тег образа (по умолчанию: latest)
-IMAGE_TAG=latest
-
-# API-ключ Яндекс.Карт для сервиса camera_map (необязательно)
-YANDEX_MAPS_API_KEY=your_yandex_api_key
-```
-
-### Файл docker-compose.yml
-
-```yaml
-services:
-  stream_detect:
-    image: ${DOCKERHUB_USERNAME:-local}/video-analysis-pedestrian-safety-stream-detect:${IMAGE_TAG:-latest}
-    # Для HLS/RTSP потока замените на:
-    # command: python stream_detect.py --url "https://..."
-    command: python stream_detect.py --folder /app/video
-    ports:
-      - "5000:5000"
-    volumes:
-      - ./zones.json:/app/zones.json
-      - ./calibrations:/app/calibrations
-      - ./video:/app/video
-      - ./violations_log.jsonl:/app/violations_log.jsonl
-      - ./reports:/app/reports
-      - ./heatmap_assets:/app/heatmap_assets
-
-  heatmap:
-    image: ${DOCKERHUB_USERNAME:-local}/video-analysis-pedestrian-safety-heatmap:${IMAGE_TAG:-latest}
-    command: python heatmap_web.py
-    ports:
-      - "5055:5055"
-    volumes:
-      - ./reports:/app/reports
-      - ./reports_batches:/app/reports_batches
-      - ./heatmap_assets:/app/heatmap_assets
-      - ./heatmap_camera_positions.json:/app/heatmap_camera_positions.json
-
-  camera_map:
-    image: ${DOCKERHUB_USERNAME:-local}/video-analysis-pedestrian-safety-camera-map:${IMAGE_TAG:-latest}
-    command: python camera_map_web.py
-    ports:
-      - "5060:5060"
-    environment:
-      - YANDEX_MAPS_API_KEY=${YANDEX_MAPS_API_KEY:-}
-    volumes:
-      - ./zones.json:/app/zones.json
-      - ./video:/app/video
-      - ./camera_points.json:/app/camera_points.json
-```
-
-### Сборка образов локально
-
-Если готовых образов на Docker Hub нет, соберите их из исходников. Проект использует многоэтапный `Dockerfile` с тремя финальными стейджами:
+Проверьте, что Docker установлен:
 
 ```bash
-# stream_detect
-docker build --target stream_detect \
-  -t local/video-analysis-pedestrian-safety-stream-detect:latest .
-
-# heatmap
-docker build --target heatmap \
-  -t local/video-analysis-pedestrian-safety-heatmap:latest .
-
-# camera_map
-docker build --target camera_map \
-  -t local/video-analysis-pedestrian-safety-camera-map:latest .
+docker --version
 ```
 
-> **Первая сборка занимает 10–20 минут** — скачиваются PyTorch (~700 МБ CPU-версия) и веса YOLOv8 n/s/m. Повторные сборки используют кэш слоёв.
+Если Docker отсутствует, установите его согласно официальной документации.
 
-### Запуск всех сервисов
+---
+
+### 2. Скачать образ из Docker Hub
 
 ```bash
-docker compose up -d
-```
-
-Проверьте, что все три контейнера запустились:
-
-```bash
-docker compose ps
-```
-
-Откройте интерфейсы в браузере:
-
-| Сервис | URL |
-|---|---|
-| Детекция потока | http://localhost:5000 |
-| Тепловая карта | http://localhost:5055 |
-| Карта камер | http://localhost:5060 |
-
-### Запуск отдельного сервиса
-
-```bash
-# Только детекция потока
-docker compose up -d stream_detect
-
-# Только тепловая карта
-docker compose up -d heatmap
-```
-
-### Подключение к HLS/RTSP потоку
-
-По умолчанию `stream_detect` читает видеофайлы из папки `./video`. Чтобы переключиться на живой поток, измените `command` в `docker-compose.yml`:
-
-```yaml
-services:
-  stream_detect:
-    command: python stream_detect.py --url "rtsp://camera.example.com/stream"
-```
-
-Или передайте дополнительные параметры:
-
-```yaml
-    command: >
-      python stream_detect.py
-      --url "https://example.com/hls/stream.m3u8"
-      --model s
-      --conf 0.40
-      --fpm 120
-      --camera cam_01
-```
-
-| Параметр | По умолчанию | Описание |
-|---|---|---|
-| `--url` | — | URL HLS/RTSP потока |
-| `--folder` | — | Путь к папке с видеофайлами |
-| `--model` | `m` | Размер модели: n / s / m / l / x |
-| `--conf` | `0.45` | Порог уверенности детекции |
-| `--imgsz` | `640` | Размер входного изображения |
-| `--fpm` | `60` | Лимит детекций в минуту |
-| `--camera` | — | ID камеры для автозагрузки зон |
-| `--port` | `5000` | Порт веб-сервера |
-
-### Просмотр логов
-
-```bash
-# Все сервисы
-docker compose logs -f
-
-# Только детекция
-docker compose logs -f stream_detect
-```
-
-### Остановка
-
-```bash
-docker compose down
+docker pull ancici/video-analysis-pedestrian-safety-heatmap:latest
 ```
 
 ---
+
+### 3. Подготовить директории
+
+Создайте необходимые каталоги:
+
+```bash
+mkdir -p reports
+mkdir -p reports_batches
+mkdir -p heatmap_assets
+```
+
+Создайте файл настроек:
+
+```bash
+touch heatmap_camera_positions.json
+```
+
+---
+
+### 4. Запустить контейнер
+
+```bash
+docker run -d \
+  --name heatmap \
+  -p 5055:5055 \
+  -v $(pwd)/reports:/app/reports \
+  -v $(pwd)/reports_batches:/app/reports_batches \
+  -v $(pwd)/heatmap_assets:/app/heatmap_assets \
+  -v $(pwd)/heatmap_camera_positions.json:/app/heatmap_camera_positions.json \
+  ancici/video-analysis-pedestrian-safety-heatmap:latest
+```
+
+---
+
+### 5. Проверить запуск
+
+Проверить работающий контейнер:
+
+```bash
+docker ps
+```
+
+Посмотреть логи:
+
+```bash
+docker logs -f heatmap
+```
+
+---
+
+### 6. Открыть веб-интерфейс
+
+Если приложение запущено локально:
+
+```
+http://localhost:5055
+```
+
+Если приложение работает на удалённом сервере:
+
+```
+http://<SERVER_IP>:5055
+```
+
+Например:
+
+```
+http://192.168.1.100:5055
+```
+
+---
+
+### Управление контейнером
+
+Остановить:
+
+```bash
+docker stop heatmap
+```
+
+Запустить снова:
+
+```bash
+docker start heatmap
+```
+
+Перезапустить:
+
+```bash
+docker restart heatmap
+```
+
+Удалить контейнер:
+
+```bash
+docker rm -f heatmap
+```
+
+Обновить до новой версии образа:
+
+```bash
+docker pull ancici/video-analysis-pedestrian-safety-heatmap:latest
+
+docker rm -f heatmap
+
+docker run -d \
+  --name heatmap \
+  -p 5055:5055 \
+  -v $(pwd)/reports:/app/reports \
+  -v $(pwd)/reports_batches:/app/reports_batches \
+  -v $(pwd)/heatmap_assets:/app/heatmap_assets \
+  -v $(pwd)/heatmap_camera_positions.json:/app/heatmap_camera_positions.json \
+  ancici/video-analysis-pedestrian-safety-heatmap:latest
+```
+
 
 ## Зоны разметки
 
