@@ -1,0 +1,4 @@
+# Виртуальное окружение создаётся внутри проекта: ./.venv
+# (в git не попадает — см. .gitignore; воспроизводится из poetry.lock)
+[virtualenvs]
+in-project = true
