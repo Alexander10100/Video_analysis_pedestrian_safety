@@ -1,20 +1,16 @@
 # tests/test_traffic_light.py
-import sys
-from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from traffic_light import (
-    STATE_RED,
-    STATE_GREEN,
-    STATE_UNKNOWN,
+from pedestrian_safety.core.traffic_light import (
     LIGHT_TYPE_PEDESTRIAN,
     LIGHT_TYPE_VEHICLE,
-    pedestrian_allowed,
-    classify_roi,
+    STATE_GREEN,
+    STATE_RED,
+    STATE_UNKNOWN,
     TrafficLightAnalyzer,
+    classify_roi,
+    pedestrian_allowed,
 )
 
 
@@ -43,21 +39,21 @@ class TestClassifyRoi:
 
     def test_empty_roi(self):
         """Пустой ROI возвращает UNKNOWN"""
-        state, conf, debug = classify_roi(None)
+        state, conf, _debug = classify_roi(None)
         assert state == STATE_UNKNOWN
         assert conf == 0.0
 
     def test_small_roi(self):
         """Слишком маленький ROI возвращает UNKNOWN"""
         small_roi = np.zeros((3, 3, 3), dtype=np.uint8)
-        state, conf, debug = classify_roi(small_roi)
+        state, _conf, _debug = classify_roi(small_roi)
         assert state == STATE_UNKNOWN
 
     def test_roi_with_red(self):
         """ROI с красным цветом"""
         roi = np.zeros((50, 50, 3), dtype=np.uint8)
         roi[:, :, 2] = 255
-        state, conf, debug = classify_roi(roi)
+        state, _conf, _debug = classify_roi(roi)
         assert state in (STATE_RED, STATE_UNKNOWN)
 
 

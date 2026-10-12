@@ -7,7 +7,11 @@ import cv2
 import numpy as np
 from flask import Flask, Response, jsonify, render_template, request
 
-ZONES_FILE = Path("zones.json")
+from pedestrian_safety.config import get_settings
+from pedestrian_safety.core.zone_manager import ZoneManager
+
+ZONES_FILE: Path = get_settings().zones_file
+CALIBRATIONS_DIR: Path = get_settings().calibrations_dir
 
 
 def create_app(ctx):
@@ -23,15 +27,20 @@ def create_app(ctx):
             except queue.Empty:
                 if blank is None:
                     blank = np.zeros((360, 640, 3), dtype=np.uint8)
-                    cv2.putText(blank, "Waiting for stream...",
-                                (160, 180), cv2.FONT_HERSHEY_SIMPLEX,
-                                1.0, (55, 55, 55), 2)
+                    cv2.putText(
+                        blank,
+                        "Waiting for stream...",
+                        (160, 180),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        1.0,
+                        (55, 55, 55),
+                        2,
+                    )
                 frame = blank
             ret, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 82])
             if not ret:
                 continue
-            yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"
-                   + buf.tobytes() + b"\r\n")
+            yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + buf.tobytes() + b"\r\n")
 
     # ── Страницы ──────────────────────────────────────────────────────────────
 
@@ -40,7 +49,8 @@ def create_app(ctx):
         videos = []
         if ctx._source_folder:
             videos = sorted(
-                p.name for p in Path(ctx._source_folder).iterdir()
+                p.name
+                for p in Path(ctx._source_folder).iterdir()
                 if p.suffix.lower() in ctx.VIDEO_EXTS
             )
         with ctx.state["lock"]:
@@ -63,31 +73,32 @@ def create_app(ctx):
 
     @app.route("/video_feed")
     def video_feed():
-        return Response(_gen_frames(),
-                        mimetype="multipart/x-mixed-replace; boundary=frame")
+        return Response(_gen_frames(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
     # ── Статистика ────────────────────────────────────────────────────────────
 
     @app.route("/stats")
     def stats_route():
         with ctx.state["lock"]:
-            return jsonify({
-                "persons": ctx.state["persons"],
-                "fps": ctx.state["fps"],
-                "dfps": ctx.state["dfps"],
-                "ms": ctx.state["ms"],
-                "frames": ctx.state["frames"],
-                "frame_skip": ctx.state["frame_skip"],
-                "source_type": ctx.state["source_type"],
-                "ts": ctx.state["ts"],
-                "model_size": ctx.state["model_size"],
-                "model_loading": ctx.state["model_loading"],
-                "violations": ctx.state.get("violations", 0),
-                "camera_id": ctx.state.get("camera_id"),
-                "adults": ctx.state.get("adults", 0),
-                "children": ctx.state.get("children", 0),
-                "age_calibrated": ctx.state.get("age_calibrated", False),
-            })
+            return jsonify(
+                {
+                    "persons": ctx.state["persons"],
+                    "fps": ctx.state["fps"],
+                    "dfps": ctx.state["dfps"],
+                    "ms": ctx.state["ms"],
+                    "frames": ctx.state["frames"],
+                    "frame_skip": ctx.state["frame_skip"],
+                    "source_type": ctx.state["source_type"],
+                    "ts": ctx.state["ts"],
+                    "model_size": ctx.state["model_size"],
+                    "model_loading": ctx.state["model_loading"],
+                    "violations": ctx.state.get("violations", 0),
+                    "camera_id": ctx.state.get("camera_id"),
+                    "adults": ctx.state.get("adults", 0),
+                    "children": ctx.state.get("children", 0),
+                    "age_calibrated": ctx.state.get("age_calibrated", False),
+                }
+            )
 
     # ── Параметры детекции ────────────────────────────────────────────────────
 
@@ -117,8 +128,9 @@ def create_app(ctx):
             if ctx.state["model_size"] == size:
                 return jsonify({"ok": True, "note": "already loaded"})
             ctx.state["model_loading"] = size
-        threading.Thread(target=ctx._do_reload_model, args=(size,),
-                         daemon=True, name=f"reload-{size}").start()
+        threading.Thread(
+            target=ctx._do_reload_model, args=(size,), daemon=True, name=f"reload-{size}"
+        ).start()
         return jsonify({"ok": True})
 
     # ── Переключение источника ────────────────────────────────────────────────
@@ -138,30 +150,28 @@ def create_app(ctx):
     @app.route("/zones", methods=["GET"])
     def zones_get():
         if ZONES_FILE.exists():
-            return ZONES_FILE.read_text(encoding="utf-8"), 200, {
-                "Content-Type": "application/json; charset=utf-8"
-            }
+            return (
+                ZONES_FILE.read_text(encoding="utf-8"),
+                200,
+                {"Content-Type": "application/json; charset=utf-8"},
+            )
         return jsonify({"cameras": {}})
 
     @app.route("/zones", methods=["POST"])
     def zones_save():
         data = request.get_json(force=True)
-        ZONES_FILE.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        ZONES_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         return jsonify({"ok": True})
 
     # ── Список камер ──────────────────────────────────────────────────────────
 
     @app.route("/cameras", methods=["GET"])
     def cameras_route():
-        from zone_manager import ZoneManager
         cameras = ZoneManager.get_cameras_from_file(ZONES_FILE)
 
         # Дополняем информацией о наличии калибровки возраста
-        from pathlib import Path as P
-        calib_dir = P("calibrations")
         for cid, info in cameras.items():
-            calib_path = calib_dir / f"{cid}.json"
+            calib_path = CALIBRATIONS_DIR / f"{cid}.json"
             info["age_calibrated"] = calib_path.exists()
 
         return jsonify({"cameras": cameras})
@@ -203,9 +213,7 @@ def create_app(ctx):
             camera_id = ctx.state.get("camera_id") or ""
             age_calibrated = ctx.state.get("age_calibrated", False)
 
-        from pathlib import Path as P
-        calib_dir = P("calibrations")
-        calib_file = calib_dir / f"{camera_id}.json" if camera_id else None
+        calib_file = CALIBRATIONS_DIR / f"{camera_id}.json" if camera_id else None
         calib_info = {}
 
         if calib_file and calib_file.exists():
@@ -225,18 +233,19 @@ def create_app(ctx):
         # Видео доступные для калибровки
         available_videos = []
         if ctx._source_folder:
-            folder = P(ctx._source_folder)
+            folder = Path(ctx._source_folder)
             if folder.is_dir():
                 available_videos = sorted(
-                    p.name for p in folder.iterdir()
-                    if p.suffix.lower() in ctx.VIDEO_EXTS
+                    p.name for p in folder.iterdir() if p.suffix.lower() in ctx.VIDEO_EXTS
                 )
 
-        return jsonify({
-            "camera_id": camera_id,
-            "calibrated": age_calibrated,
-            "calib_info": calib_info,
-            "available_videos": available_videos,
-        })
+        return jsonify(
+            {
+                "camera_id": camera_id,
+                "calibrated": age_calibrated,
+                "calib_info": calib_info,
+                "available_videos": available_videos,
+            }
+        )
 
     return app

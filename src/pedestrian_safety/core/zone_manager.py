@@ -20,18 +20,21 @@ zone_manager.py — Управление зонами разметки.
 from __future__ import annotations
 
 import json
+import logging
 import threading
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 import cv2
 import numpy as np
 
-from traffic_light import LIGHT_TYPE_PEDESTRIAN
+from pedestrian_safety.config import get_settings
+from pedestrian_safety.core.traffic_light import LIGHT_TYPE_PEDESTRIAN
 
-ZONES_FILE = Path("zones.json")
+logger = logging.getLogger(__name__)
+
+ZONES_FILE: Path = get_settings().zones_file
 
 
 @dataclass
@@ -39,11 +42,11 @@ class RoadZone:
     id: str
     label: str
     polygon: list[list[float]]
-    type: str               # "road" | "crosswalk"
-    color: list[int]         # [R, G, B]
-    traffic_light_roi: Optional[object] = None
+    type: str  # "road" | "crosswalk"
+    color: list[int]  # [R, G, B]
+    traffic_light_roi: object | None = None
     has_light: bool = False
-    parent_id: Optional[str] = None
+    parent_id: str | None = None
     light_type: str = LIGHT_TYPE_PEDESTRIAN  # "pedestrian" | "vehicle"
 
     def to_dict(self) -> dict:
@@ -60,7 +63,7 @@ class RoadZone:
         }
 
     @staticmethod
-    def from_dict(d: dict) -> "RoadZone":
+    def from_dict(d: dict) -> RoadZone:
         return RoadZone(
             id=d["id"],
             label=d["label"],
@@ -81,15 +84,17 @@ class RoadZone:
             return False
         return cv2.pointPolygonTest(self.np_polygon(), (float(x), float(y)), False) >= 0
 
-    def contains_box(self, x1: float, y1: float, x2: float, y2: float,
-                     mode: str = "feet") -> bool:
+    def contains_box(self, x1: float, y1: float, x2: float, y2: float, mode: str = "feet") -> bool:
         if mode == "feet":
             return self.contains_point((x1 + x2) / 2, y2)
         if mode == "center":
             return self.contains_point((x1 + x2) / 2, (y1 + y2) / 2)
         pts = [
             ((x1 + x2) / 2, (y1 + y2) / 2),
-            (x1, y1), (x2, y1), (x1, y2), (x2, y2),
+            (x1, y1),
+            (x2, y1),
+            (x1, y2),
+            (x2, y2),
         ]
         return any(self.contains_point(px, py) for px, py in pts)
 
@@ -105,11 +110,17 @@ class ZoneManager:
 
     # ── CRUD ──────────────────────────────────────────────────────────────────
 
-    def add_zone(self, label: str, polygon: list, zone_type: str = "road",
-                 color: list | None = None, has_light: bool = False,
-                 traffic_light_roi=None,
-                 parent_id: str | None = None,
-                 light_type: str = LIGHT_TYPE_PEDESTRIAN) -> RoadZone:
+    def add_zone(
+        self,
+        label: str,
+        polygon: list,
+        zone_type: str = "road",
+        color: list | None = None,
+        has_light: bool = False,
+        traffic_light_roi=None,
+        parent_id: str | None = None,
+        light_type: str = LIGHT_TYPE_PEDESTRIAN,
+    ) -> RoadZone:
         if color is None:
             color = [0, 80, 220] if zone_type == "road" else [220, 160, 0]
         z = RoadZone(
@@ -143,8 +154,7 @@ class ZoneManager:
         with self._lock:
             if zone_id not in self._zones:
                 return False
-            children = [zid for zid, z in self._zones.items()
-                        if z.parent_id == zone_id]
+            children = [zid for zid, z in self._zones.items() if z.parent_id == zone_id]
             for cid in children:
                 del self._zones[cid]
             del self._zones[zone_id]
@@ -180,16 +190,16 @@ class ZoneManager:
         try:
             raw = json.loads(self._file.read_text(encoding="utf-8"))
             if isinstance(raw, dict) and "cameras" in raw:
-                print("[zones] Обнаружен формат cameras-dict. Ожидайте /set_camera.")
+                logger.info("Обнаружен формат cameras-dict. Ожидайте /set_camera.")
                 return
             if isinstance(raw, list):
                 with self._lock:
                     for d in raw:
                         z = RoadZone.from_dict(d)
                         self._zones[z.id] = z
-                print(f"[zones] Загружено {len(self._zones)} зон (плоский формат)")
+                logger.info(f"Загружено {len(self._zones)} зон (плоский формат)")
         except Exception as e:
-            print(f"[zones] Ошибка загрузки: {e}")
+            logger.info(f"Ошибка загрузки: {e}")
 
     def reload_for_camera(self, camera_id: str) -> int:
         with self._lock:
@@ -210,10 +220,10 @@ class ZoneManager:
                     z = RoadZone.from_dict(d)
                     self._zones[z.id] = z
             n = len(self._zones)
-            print(f"[zones] Камера '{camera_id}': загружено {n} зон")
+            logger.info(f"Камера '{camera_id}': загружено {n} зон")
             return n
         except Exception as e:
-            print(f"[zones] Ошибка reload_for_camera('{camera_id}'): {e}")
+            logger.info(f"Ошибка reload_for_camera('{camera_id}'): {e}")
             return 0
 
     @staticmethod

@@ -1,28 +1,25 @@
 # tests/test_stream_detect.py
-import sys
-from pathlib import Path
+import contextlib
 import threading
 import time
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from stream_detect import (
-    compute_skip,
-    state,
-    set_camera,
-    _source_url,
-    _source_folder,
-    _current_video,
-    _restart_event,
-    _model_reload_event,
-    _clear_cache_event,
-    _frame_queue,
-    _evict_every,
-    _violation_cooldown,
+from pedestrian_safety.services.stream_detect import (
     COOLDOWN_SECONDS,
     VIOLATION_LOG,
+    _clear_cache_event,
+    _current_video,
+    _evict_every,
+    _frame_queue,
+    _model_reload_event,
+    _restart_event,
+    _source_folder,
+    _source_url,
+    _violation_cooldown,
+    compute_skip,
+    set_camera,
+    state,
 )
 
 
@@ -84,10 +81,8 @@ class TestStreamDetect:
 
     def test_camera_setting(self):
         """Установка камеры"""
-        try:
+        with contextlib.suppress(Exception):
             set_camera("test_camera")
-        except Exception:
-            pass
         assert True
 
     def test_source_variables(self):
@@ -128,14 +123,47 @@ class TestStreamDetect:
         assert COOLDOWN_SECONDS == 10.0
         assert COOLDOWN_SECONDS > 0
 
-    @pytest.mark.parametrize("fps,fpm,expected", [
-        (60, 60, 60),
-        (60, 120, 30),
-        (30, 60, 30),
-        (30, 30, 60),
-        (25, 100, 15),
-    ])
+    @pytest.mark.parametrize(
+        "fps,fpm,expected",
+        [
+            (60, 60, 60),
+            (60, 120, 30),
+            (30, 60, 30),
+            (30, 30, 60),
+            (25, 100, 15),
+        ],
+    )
     def test_compute_skip_parametrized(self, fps, fpm, expected):
         """Параметризованный тест compute_skip"""
         skip = compute_skip(fps, fpm)
         assert skip == expected
+
+
+class TestReadFrame:
+    """Регрессия: кадр должен читаться ровно один раз за итерацию."""
+
+    def test_reads_exactly_one_frame_from_capture(self):
+        from unittest.mock import MagicMock
+
+        import numpy as np
+
+        from pedestrian_safety.services.stream_detect import _read_frame
+
+        cap = MagicMock()
+        cap.read.return_value = (True, np.zeros((2, 2, 3), dtype=np.uint8))
+
+        ok, frame = _read_frame(cap, None)
+
+        assert ok is True
+        assert frame is not None
+        assert cap.read.call_count == 1
+
+    def test_short_ffmpeg_read_means_end_of_stream(self):
+        from unittest.mock import MagicMock
+
+        from pedestrian_safety.services.stream_detect import _read_frame
+
+        process = MagicMock()
+        process.stdout.read.return_value = b"\x00" * 10  # меньше одного кадра
+
+        assert _read_frame(None, process) == (False, None)

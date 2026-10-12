@@ -1,30 +1,25 @@
-import sys
-from pathlib import Path
 import json
 from datetime import datetime, timedelta
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from batch_folder_offline import (
-    list_video_files,
-    collect_video_folders,
-    load_zones_db,
-    ensure_camera_entry,
-    camera_has_zones,
+from pedestrian_safety.pipelines.batch_folder_offline import (
+    COOLDOWN_SECONDS,
     build_report_data,
-    summarize_processing_stats,
-    write_json,
+    camera_has_zones,
+    collect_video_folders,
+    ensure_camera_entry,
+    list_video_files,
+    load_json_if_exists,
+    load_zones_db,
     make_violation_logger,
     merge_combined_reports,
-    load_json_if_exists,
-    COOLDOWN_SECONDS,
+    summarize_processing_stats,
+    write_json,
 )
 
 
 class TestBatchFolderOffline:
-
     def test_list_video_files(self, tmp_path):
         """Список видеофайлов в папке"""
         for ext in [".mp4", ".avi", ".mkv", ".txt"]:
@@ -67,12 +62,10 @@ class TestBatchFolderOffline:
     def test_load_zones_db(self, tmp_path):
         """Загрузка базы зон"""
         zones_file = tmp_path / "zones.json"
-        zones_file.write_text(
-            json.dumps({"cameras": {"test": {"zones": []}}}),
-            encoding="utf-8"
-        )
+        zones_file.write_text(json.dumps({"cameras": {"test": {"zones": []}}}), encoding="utf-8")
 
-        import batch_folder_offline
+        from pedestrian_safety.pipelines import batch_folder_offline
+
         original = batch_folder_offline.ZONES_FILE
         batch_folder_offline.ZONES_FILE = zones_file
 
@@ -88,7 +81,8 @@ class TestBatchFolderOffline:
         zones_file = tmp_path / "zones.json"
         zones_file.write_text(json.dumps({"cameras": {}}), encoding="utf-8")
 
-        import batch_folder_offline
+        from pedestrian_safety.pipelines import batch_folder_offline
+
         original = batch_folder_offline.ZONES_FILE
         batch_folder_offline.ZONES_FILE = zones_file
 
@@ -103,16 +97,19 @@ class TestBatchFolderOffline:
         """Проверка наличия зон у камеры"""
         zones_file = tmp_path / "zones.json"
         zones_file.write_text(
-            json.dumps({
-                "cameras": {
-                    "cam1": {"zones": [{"id": "z1"}]},
-                    "cam2": {"zones": []},
+            json.dumps(
+                {
+                    "cameras": {
+                        "cam1": {"zones": [{"id": "z1"}]},
+                        "cam2": {"zones": []},
+                    }
                 }
-            }),
-            encoding="utf-8"
+            ),
+            encoding="utf-8",
         )
 
-        import batch_folder_offline
+        from pedestrian_safety.pipelines import batch_folder_offline
+
         original = batch_folder_offline.ZONES_FILE
         batch_folder_offline.ZONES_FILE = zones_file
 

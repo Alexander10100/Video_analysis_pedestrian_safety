@@ -1,12 +1,8 @@
 # tests/conftest.py
 import json
-import sys
-from pathlib import Path
 
 import numpy as np
 import pytest
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 @pytest.fixture
@@ -24,7 +20,8 @@ def sample_bbox():
 @pytest.fixture
 def temp_calibration(tmp_path):
     """Создаёт временный файл калибровки"""
-    import age_classifier
+    from pedestrian_safety.core import age_classifier
+
     original_dir = age_classifier.CALIBRATIONS_DIR
 
     calib_dir = tmp_path / "calibrations"
@@ -32,12 +29,14 @@ def temp_calibration(tmp_path):
 
     calib_file = calib_dir / "test_cam.json"
     calib_file.write_text(
-        json.dumps({
-            "frame_height": 720,
-            "refs": {"5": 180.0, "6": 185.0},
-            "samples_count": {"5": 50, "6": 45}
-        }),
-        encoding="utf-8"
+        json.dumps(
+            {
+                "frame_height": 720,
+                "refs": {"5": 180.0, "6": 185.0},
+                "samples_count": {"5": 50, "6": 45},
+            }
+        ),
+        encoding="utf-8",
     )
 
     age_classifier.CALIBRATIONS_DIR = calib_dir

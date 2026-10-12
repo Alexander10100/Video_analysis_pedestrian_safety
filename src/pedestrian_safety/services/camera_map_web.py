@@ -1,3 +1,4 @@
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -5,12 +6,14 @@ from pathlib import Path
 import cv2
 from flask import Flask, Response, abort, jsonify, render_template, request
 
+from pedestrian_safety.config import VIDEO_EXTS, get_settings
+from pedestrian_safety.logging_config import setup_logging
 
-BASE_DIR = Path(__file__).resolve().parent
-VIDEO_ROOT = BASE_DIR / "video"
-ZONES_FILE = BASE_DIR / "zones.json"
-MAP_CONFIG_FILE = BASE_DIR / "camera_points.json"
-VIDEO_EXTS = {".mp4", ".avi", ".mov", ".mkv", ".ts", ".webm", ".m4v"}
+_settings = get_settings()
+BASE_DIR = _settings.data_dir
+VIDEO_ROOT = _settings.video_root
+ZONES_FILE = _settings.zones_file
+MAP_CONFIG_FILE = _settings.camera_points_file
 
 
 def load_json(path: Path, default):
@@ -62,7 +65,7 @@ def save_zones_db(data):
 
 
 def discover_camera_ids():
-    ids = set()
+    ids: set[str] = set()
     if VIDEO_ROOT.exists():
         ids.update(p.name for p in VIDEO_ROOT.iterdir() if p.is_dir())
     ids.update(load_zones_db().get("cameras", {}).keys())
@@ -89,10 +92,7 @@ def resolve_video_folder(camera_id: str, config: dict) -> Path | None:
 def list_videos(folder: Path | None):
     if folder is None or not folder.exists():
         return []
-    return sorted(
-        p for p in folder.iterdir()
-        if p.is_file() and p.suffix.lower() in VIDEO_EXTS
-    )
+    return sorted(p for p in folder.iterdir() if p.is_file() and p.suffix.lower() in VIDEO_EXTS)
 
 
 def first_video_for_camera(camera_id: str, config: dict) -> Path | None:
@@ -152,10 +152,10 @@ def _clean_roi(value):
 
     # Проверяем: это одиночный ROI [x,y,w,h] из чисел?
     if len(value) == 4 and all(isinstance(v, (int, float)) for v in value):
-        rois_raw = [value]
+        rois_raw: list = [value]
     else:
         # Список ROI
-        rois_raw = value
+        rois_raw = list(value)
 
     cleaned_rois = []
     for roi in rois_raw:
@@ -173,12 +173,14 @@ def _clean_roi(value):
             continue
         w = max(0.001, min(1.0 - x, w))
         h = max(0.001, min(1.0 - y, h))
-        cleaned_rois.append([
-            round(x, 6),
-            round(y, 6),
-            round(w, 6),
-            round(h, 6),
-        ])
+        cleaned_rois.append(
+            [
+                round(x, 6),
+                round(y, 6),
+                round(w, 6),
+                round(h, 6),
+            ]
+        )
 
     if not cleaned_rois:
         return None
@@ -206,11 +208,13 @@ def create_app():
     @app.route("/api/map/state")
     def api_map_state():
         config = load_map_config()
-        return jsonify({
-            "api_key_present": bool(os.environ.get("YANDEX_MAPS_API_KEY")),
-            "map": config.get("map", {}),
-            "cameras": all_camera_summaries(),
-        })
+        return jsonify(
+            {
+                "api_key_present": bool(os.environ.get("YANDEX_MAPS_API_KEY")),
+                "map": config.get("map", {}),
+                "cameras": all_camera_summaries(),
+            }
+        )
 
     @app.route("/api/map/state", methods=["POST"])
     def api_map_state_save():
@@ -228,10 +232,8 @@ def create_app():
                 except Exception:
                     pass
             if zoom is not None:
-                try:
+                with contextlib.suppress(Exception):
                     config["map"]["zoom"] = float(zoom)
-                except Exception:
-                    pass
         save_map_config(config)
         return jsonify({"ok": True, "map": config["map"]})
 
@@ -260,12 +262,14 @@ def create_app():
         if camera_id not in discover_camera_ids():
             abort(404)
         first_video = first_video_for_camera(camera_id, config)
-        return jsonify({
-            "camera": camera_summary(camera_id, config, zones_db),
-            "zones": zones_db.get("cameras", {}).get(camera_id, {}).get("zones", []),
-            "frame_url": f"/camera/{camera_id}/frame",
-            "has_frame": first_video is not None,
-        })
+        return jsonify(
+            {
+                "camera": camera_summary(camera_id, config, zones_db),
+                "zones": zones_db.get("cameras", {}).get(camera_id, {}).get("zones", []),
+                "frame_url": f"/camera/{camera_id}/frame",
+                "has_frame": first_video is not None,
+            }
+        )
 
     @app.route("/camera/<camera_id>/frame")
     def camera_frame(camera_id: str):
@@ -285,8 +289,8 @@ def create_app():
         if not isinstance(zones, list):
             return jsonify({"ok": False, "error": "zones must be a list"}), 400
 
-        cleaned = []
-        errors = []
+        cleaned: list[dict] = []
+        errors: list[str] = []
 
         for zone_idx, zone in enumerate(zones):
             if not isinstance(zone, dict):
@@ -299,7 +303,7 @@ def create_app():
                 errors.append(f"zone[{zone_idx}] polygon < 3 точек")
                 continue
 
-            normalized = []
+            normalized: list[list[float]] = []
             for point in polygon:
                 if not isinstance(point, (list, tuple)) or len(point) != 2:
                     normalized = []
@@ -346,17 +350,19 @@ def create_app():
             zone_id = str(zone.get("id") or f"{camera_id}_{len(cleaned) + 1}")
             label = str(zone.get("label") or f"Зона {len(cleaned) + 1}")
 
-            cleaned.append({
-                "id": zone_id,
-                "label": label,
-                "polygon": normalized,
-                "type": zone_type,
-                "color": color,
-                "traffic_light_roi": tl_roi,
-                "has_light": has_light,
-                "parent_id": zone.get("parent_id"),
-                "light_type": light_type,
-            })
+            cleaned.append(
+                {
+                    "id": zone_id,
+                    "label": label,
+                    "polygon": normalized,
+                    "type": zone_type,
+                    "color": color,
+                    "traffic_light_roi": tl_roi,
+                    "has_light": has_light,
+                    "parent_id": zone.get("parent_id"),
+                    "light_type": light_type,
+                }
+            )
 
         zones_db = load_zones_db()
         zones_db.setdefault("cameras", {})
@@ -365,7 +371,7 @@ def create_app():
         entry["zones"] = cleaned
         save_zones_db(zones_db)
 
-        response = {"ok": True, "zones_count": len(cleaned)}
+        response: dict[str, object] = {"ok": True, "zones_count": len(cleaned)}
         if errors:
             response["warnings"] = errors
         return jsonify(response)
@@ -378,20 +384,29 @@ def create_app():
         zones = cam_data.get("zones", [])
         result = []
         for z in zones:
-            result.append({
-                "id": z.get("id"),
-                "label": z.get("label"),
-                "type": z.get("type"),
-                "has_light": z.get("has_light"),
-                "light_type": z.get("light_type"),
-                "traffic_light_roi": z.get("traffic_light_roi"),
-                "polygon_points": len(z.get("polygon", [])),
-            })
+            result.append(
+                {
+                    "id": z.get("id"),
+                    "label": z.get("label"),
+                    "type": z.get("type"),
+                    "has_light": z.get("has_light"),
+                    "light_type": z.get("light_type"),
+                    "traffic_light_roi": z.get("traffic_light_roi"),
+                    "polygon_points": len(z.get("polygon", [])),
+                }
+            )
         return jsonify({"camera_id": camera_id, "zones": result, "total": len(result)})
 
     return app
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Точка входа: ``psafety-camera-map``."""
+    setup_logging()
+    port = int(os.environ.get("PORT", "5060"))
     app = create_app()
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "5060")), debug=False)
+    app.run(host="0.0.0.0", port=port, debug=False)
+
+
+if __name__ == "__main__":
+    main()

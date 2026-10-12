@@ -1,25 +1,22 @@
 # tests/test_offline_detect.py
-import sys
-from pathlib import Path
 import tempfile
+from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from offline_detect import (
-    _progress_bar,
-    _format_eta,
-    _make_output_path,
+from pedestrian_safety.pipelines.offline_detect import (
+    OUTPUT_EXT,
+    OUTPUT_FOURCC,
+    VIDEO_EXTS,
     _configure_runtime,
+    _draw_legend_offline,
+    _format_eta,
+    _iou,
+    _make_output_path,
+    _merge_tile_boxes,
+    _progress_bar,
     _resolve_device,
     _use_half_for_device,
-    _iou,
-    _merge_tile_boxes,
-    _draw_legend_offline,
-    VIDEO_EXTS,
-    OUTPUT_FOURCC,
-    OUTPUT_EXT,
 )
 
 
@@ -82,9 +79,8 @@ class TestOfflineDetect:
         assert _use_half_for_device("cpu") is False
 
         result = _use_half_for_device("cuda:0")
-        if torch := _configure_runtime():
-            if torch.cuda.is_available():
-                assert result is True
+        if (torch := _configure_runtime()) and torch.cuda.is_available():
+            assert result is True
 
     def test_iou(self):
         """Расчёт IoU"""
@@ -128,9 +124,7 @@ class TestOfflineDetect:
 
     def test_merge_tile_boxes_with_existing(self):
         """Объединение тайловых боксов с существующими"""
-        norm_boxes = [
-            (1, 0.1, 0.1, 0.2, 0.2, 0.9, "adult", 0.8)
-        ]
+        norm_boxes = [(1, 0.1, 0.1, 0.2, 0.2, 0.9, "adult", 0.8)]
         tile_raw = [
             {"x1": 15, "y1": 15, "x2": 25, "y2": 25, "conf": 0.8},
             {"x1": 80, "y1": 80, "x2": 90, "y2": 90, "conf": 0.7},

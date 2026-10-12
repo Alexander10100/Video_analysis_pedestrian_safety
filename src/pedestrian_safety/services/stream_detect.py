@@ -7,37 +7,48 @@ stream_detect.py — Веб-визуализация детекции людей
     pip install ultralytics opencv-python flask pillow
 
 Запуск:
-    python stream_detect.py --url "https://..."
-    python stream_detect.py --folder "/path/to/videos"
+    psafety-stream --url "https://..."
+    psafety-stream --folder "/path/to/videos"
 
 Калибровка (запускается отдельно перед боевым запуском):
-    python calibrate_camera.py --video cam1.mp4 --camera cam_01
+    psafety-calibrate --video cam1.mp4 --camera cam_01
 
 Открыть браузер: http://localhost:5000
 """
 
 import argparse
+import contextlib
+import json
+import logging
 import queue
+import shutil
 import subprocess
 import sys
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import cv2
 import numpy as np
-from stream_detect_web import create_app
-import json
-from datetime import datetime
 
-from age_classifier import AgeClassifier, AgeTracker, BboxEMA
-from traffic_light import TrafficLightAnalyzer
-from violation_detector import (
-    ViolationDetector, draw_violations, draw_zones,
-    draw_traffic_light_states, _put_text_pil,
+from pedestrian_safety.config import VIDEO_EXTS, YOLO_SIZES, get_settings
+from pedestrian_safety.core.age_classifier import AgeClassifier, AgeTracker, BboxEMA
+from pedestrian_safety.core.traffic_light import TrafficLightAnalyzer
+from pedestrian_safety.core.violation_detector import (
+    ViolationDetector,
+    _put_text_pil,
+    draw_traffic_light_states,
+    draw_violations,
+    draw_zones,
     person_inside_vehicle,
 )
-from zone_manager import ZoneManager
+from pedestrian_safety.core.zone_manager import ZoneManager
+from pedestrian_safety.logging_config import setup_logging
+from pedestrian_safety.services.stream_detect_web import create_app
+
+logger = logging.getLogger(__name__)
 
 # ── Глобальные объекты разметки ───────────────────────────────────────────────
 zone_mgr = ZoneManager()
@@ -59,15 +70,15 @@ _age_tracker = AgeTracker(
 _bbox_ema = BboxEMA(alpha=0.35)
 
 # Счётчик кадров для периодической чистки мёртвых треков
-_evict_every = 150   # кадров
+_evict_every = 150  # кадров
 
 # ── Логирование нарушений для отчётов ───────────────────────────────────────
-VIOLATION_LOG = Path("violations_log.jsonl")
+VIOLATION_LOG: Path = get_settings().violation_log
 _violation_log_lock = threading.Lock()
 
 # Защита от повторных нарушений одного и того же человека
 _violation_cooldown: dict[int, float] = {}
-COOLDOWN_SECONDS = 10        # секунд между логированиями одного track_id
+COOLDOWN_SECONDS = 10  # секунд между логированиями одного track_id
 
 
 def log_violations(camera_id: str, violation_list: list, ts: float):
@@ -82,7 +93,7 @@ def log_violations(camera_id: str, violation_list: list, ts: float):
         if v.violation == "none":
             continue
 
-        tid = getattr(v, 'track_id', -1)
+        tid = getattr(v, "track_id", -1)
 
         if tid < 0:
             continue
@@ -109,18 +120,17 @@ def log_violations(camera_id: str, violation_list: list, ts: float):
 
     # Записываем в файл
     if new_entries:
-        with _violation_log_lock:
-            with VIOLATION_LOG.open("a", encoding="utf-8") as f:
-                for e in new_entries:
-                    f.write(json.dumps(e, ensure_ascii=False) + "\n")
+        with _violation_log_lock, VIOLATION_LOG.open("a", encoding="utf-8") as f:
+            for e in new_entries:
+                f.write(json.dumps(e, ensure_ascii=False) + "\n")
 
-        print(f"[LOG] Записано {len(new_entries)} новых нарушений")
+        logger.info(f"Записано {len(new_entries)} новых нарушений")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Глобальное состояние
 # ──────────────────────────────────────────────────────────────────────────────
-state = {
+state: dict[str, Any] = {
     "conf": 0.45,
     "imgsz": 640,
     "fpm": 60,
@@ -152,16 +162,20 @@ _clear_cache_event = threading.Event()
 
 _frame_queue: queue.Queue = queue.Queue(maxsize=2)
 
-VIDEO_EXTS = {".mp4", ".avi", ".mov", ".mkv", ".ts", ".webm", ".m4v"}
 
 # ── FFmpeg-параметры для HLS/RTSP потоков ────────────────────────────────────
 STREAM_WIDTH = 1280
 STREAM_HEIGHT = 720
 STREAM_FRAME_SIZE = STREAM_WIDTH * STREAM_HEIGHT * 3
-if sys.platform == "win32":
-    FFMPEG_PATH = Path(__file__).resolve().parent / "ffmpeg" / "bin" / "ffmpeg.exe"
-else:
-    FFMPEG_PATH = "ffmpeg"
+# Раньше на Linux здесь была строка, и вызов FFMPEG_PATH.exists() падал с
+# AttributeError — HLS/RTSP-потоки не работали в Docker. Теперь путь
+# определяется в config.py (FFMPEG_PATH из env → PATH → ffmpeg/bin на Windows).
+FFMPEG_PATH: str = get_settings().ffmpeg_path
+
+# YOLO-классы COCO: 0=person, 2=car, 3=motorcycle, 5=bus, 7=truck
+PERSON_CLASS = 0
+VEHICLE_CLASSES = frozenset({2, 3, 5, 7})
+TRACK_CLASSES = [PERSON_CLASS, *sorted(VEHICLE_CLASSES)]
 
 # ── YOLO ──────────────────────────────────────────────────────────────────────
 _model = None
@@ -172,10 +186,10 @@ def load_yolo(size: str):
     try:
         from ultralytics import YOLO
     except ImportError:
-        print("[ERROR] pip install ultralytics")
+        logger.error("pip install ultralytics")
         sys.exit(1)
     name = f"yolov8{size}.pt"
-    print(f"[INFO] Загружаем {name}…")
+    logger.info(f"Загружаем {name}…")
     return YOLO(name)
 
 
@@ -198,36 +212,47 @@ def _do_reload_model(size: str):
         state["model_size"] = size
         state["model_loading"] = None
     _model_reload_event.set()
-    print(f"[INFO] Модель переключена → yolov8{size}")
+    logger.info(f"Модель переключена → yolov8{size}")
 
 
 # ── FFmpeg-захват ─────────────────────────────────────────────────────────────
 
+
 def _open_ffmpeg_stream(url: str):
     """Запустить FFmpeg и вернуть Popen-процесс, пишущий BGR-кадры в stdout."""
-    if not FFMPEG_PATH.exists():
+    if shutil.which(FFMPEG_PATH) is None and not Path(FFMPEG_PATH).exists():
         raise FileNotFoundError(f"FFmpeg not found: {FFMPEG_PATH}")
 
     command = [
         str(FFMPEG_PATH),
-        "-loglevel", "quiet",
+        "-loglevel",
+        "quiet",
         "-re",
-        "-fflags", "nobuffer",
-        "-flags", "low_delay",
-        "-probesize", "32",
-        "-analyzeduration", "0",
-        "-i", url,
-        "-vf", f"scale={STREAM_WIDTH}:{STREAM_HEIGHT}",
-        "-vsync", "1",
-        "-f", "rawvideo",
-        "-pix_fmt", "bgr24",
+        "-fflags",
+        "nobuffer",
+        "-flags",
+        "low_delay",
+        "-probesize",
+        "32",
+        "-analyzeduration",
+        "0",
+        "-i",
+        url,
+        "-vf",
+        f"scale={STREAM_WIDTH}:{STREAM_HEIGHT}",
+        "-vsync",
+        "1",
+        "-f",
+        "rawvideo",
+        "-pix_fmt",
+        "bgr24",
         "-",
     ]
     return subprocess.Popen(
         command,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
-        bufsize=10 ** 8,
+        bufsize=10**8,
     )
 
 
@@ -235,17 +260,14 @@ def _kill_process(process):
     """Мягко завершить FFmpeg-процесс."""
     if process is None:
         return
-    try:
+    with contextlib.suppress(OSError):
         process.kill()
-    except OSError:
-        pass
-    try:
+    with contextlib.suppress(Exception):
         process.wait(timeout=1)
-    except Exception:
-        pass
 
 
 # ── Переключение камеры ───────────────────────────────────────────────────────
+
 
 def set_camera(camera_id: str):
     """Перезагрузить зоны и сбросить все временные состояния для новой камеры."""
@@ -266,7 +288,7 @@ def set_camera(camera_id: str):
             state["camera_id"] = None
             state["age_calibrated"] = False
         _clear_cache_event.set()
-        print("[camera] Камера сброшена, зоны и светофоры очищены")
+        logger.info("Камера сброшена, зоны и светофоры очищены")
         return
 
     # ── Загрузка зон для камеры ───────────────────────────────────────────────
@@ -276,16 +298,17 @@ def set_camera(camera_id: str):
     viol_det = ViolationDetector(zone_mgr, tl_analyzer)
 
     with _age_clf_lock:
-        _age_clf = None   # пересоздастся в capture_thread с актуальной высотой кадра
+        _age_clf = None  # пересоздастся в capture_thread с актуальной высотой кадра
 
     with state["lock"]:
         state["camera_id"] = camera_id
         state["age_calibrated"] = False
 
-    print(f"[camera] Активна: '{camera_id}'  ({n} зон)")
+    logger.info(f"Активна: '{camera_id}'  ({n} зон)")
 
 
 # ── Детекция и анализ ─────────────────────────────────────────────────────────
+
 
 def detect_and_analyze(
     model,
@@ -304,8 +327,13 @@ def detect_and_analyze(
 
     # classes=[0,2,3,5,7]: 0=person, 2=car, 3=motorcycle, 5=bus, 7=truck
     results = model.track(
-        frame, classes=[0, 2, 3, 5, 7], conf=conf, iou=0.45,
-        imgsz=imgsz, persist=True, verbose=False,
+        frame,
+        classes=TRACK_CLASSES,
+        conf=conf,
+        iou=0.45,
+        imgsz=imgsz,
+        persist=True,
+        verbose=False,
     )[0]
     elapsed_ms = (time.perf_counter() - t0) * 1000
 
@@ -331,24 +359,19 @@ def detect_and_analyze(
     with _age_clf_lock:
         if _age_clf is None:
             cam_id = state.get("camera_id") or ""
-            if cam_id:
-                _age_clf = AgeClassifier.load_for_camera(cam_id, fh)
-            else:
-                _age_clf = AgeClassifier(fh)
+            _age_clf = AgeClassifier.load_for_camera(cam_id, fh) if cam_id else AgeClassifier(fh)
             with state["lock"]:
                 state["age_calibrated"] = _age_clf.is_calibrated()
         age_clf = _age_clf
 
     # ── Bbox + EMA-сглаживание + классификация возраста + temporal smoothing ──
     norm_boxes = []
-    vehicle_boxes = []   # [(x1,y1,x2,y2)] в пикселях — для фильтрации водителей
+    vehicle_boxes = []  # [(x1,y1,x2,y2)] в пикселях — для фильтрации водителей
     adults_cnt = 0
     children_cnt = 0
     active_tids: set[int] = set()
 
     # ── Первый проход: собираем bbox транспортных средств ─────────────────────
-    # YOLO классы: 2=car, 3=motorcycle, 5=bus, 7=truck
-    VEHICLE_CLASSES = {2, 3, 5, 7}
     if results.boxes is not None:
         for box in results.boxes:
             cls_id = int(box.cls[0]) if box.cls is not None else -1
@@ -360,7 +383,7 @@ def detect_and_analyze(
     if results.boxes is not None:
         for box in results.boxes:
             cls_id = int(box.cls[0]) if box.cls is not None else -1
-            if cls_id != 0:   # пропускаем не-людей
+            if cls_id != PERSON_CLASS:  # пропускаем не-людей
                 continue
 
             raw_x1, raw_y1, raw_x2, raw_y2 = map(int, box.xyxy[0])
@@ -389,22 +412,26 @@ def detect_and_analyze(
             else:
                 adults_cnt += 1
 
-            norm_boxes.append((
-                tid,
-                x1 / fw, y1 / fh,
-                x2 / fw, y2 / fh,
-                conf_val,
-                age_label,
-                age_conf,
-            ))
+            norm_boxes.append(
+                (
+                    tid,
+                    x1 / fw,
+                    y1 / fh,
+                    x2 / fw,
+                    y2 / fh,
+                    conf_val,
+                    age_label,
+                    age_conf,
+                )
+            )
 
     # ── Периодическая чистка мёртвых треков ──────────────────────────────────
     if frame_idx % _evict_every == 0 and active_tids:
         evicted_ema = _bbox_ema.evict(active_tids)
         evicted_tracker = _age_tracker.evict(active_tids)
         if evicted_ema or evicted_tracker:
-            print(
-                f"[evict] кадр {frame_idx}: "
+            logger.info(
+                f"кадр {frame_idx}: "
                 f"BboxEMA={evicted_ema}, AgeTracker={evicted_tracker} треков удалено"
             )
 
@@ -412,7 +439,8 @@ def detect_and_analyze(
     annotated, vcount = draw_violations(annotated, violations, fw, fh)
 
     # === Логируем нарушения для отчётов ===
-    cam_id = state.get("camera_id", "") if "state" in globals() else ""
+    with state["lock"]:
+        cam_id = state.get("camera_id") or ""
     log_violations(cam_id, violations, time.time())
 
     # Состояния светофоров поверх всего
@@ -454,8 +482,7 @@ def _draw_legend(
         (f"Модель:    yolov8{model_sz}", (90, 130, 255)),
         (f"FPM лим.:  {fpm}  (1/{skip})", (180, 130, 0)),
         (f"Камера:    {cam_id[:18]}", (100, 200, 200)),
-        (f"Калибр.:   {age_status}",
-         (50, 205, 50) if age_calibrated else (180, 130, 0)),
+        (f"Калибр.:   {age_status}", (50, 205, 50) if age_calibrated else (180, 130, 0)),
     ]
 
     pad, lh = 8, 22
@@ -470,8 +497,7 @@ def _draw_legend(
 
     for i, (text, color) in enumerate(lines):
         y = 10 + pad + i * lh
-        frame = _put_text_pil(frame, text, (10 + pad, y),
-                              color_bgr=color, font_size=font_size)
+        frame = _put_text_pil(frame, text, (10 + pad, y), color_bgr=color, font_size=font_size)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -481,47 +507,7 @@ def compute_skip(stream_fps: float, fpm: int) -> int:
     if stream_fps <= 0:
         return 1
     fps_target = fpm / 60.0
-    return max(1, int(round(stream_fps / fps_target)))
-
-
-def _open_ffmpeg_stream(url: str):
-    if not FFMPEG_PATH.exists():
-        raise FileNotFoundError(f"FFmpeg not found: {FFMPEG_PATH}")
-
-    command = [
-        str(FFMPEG_PATH),
-        "-loglevel", "quiet",
-        "-re",
-        "-fflags", "nobuffer",
-        "-flags", "low_delay",
-        "-probesize", "32",
-        "-analyzeduration", "0",
-        "-i", url,
-        "-vf", f"scale={STREAM_WIDTH}:{STREAM_HEIGHT}",
-        "-vsync", "1",
-        "-f", "rawvideo",
-        "-pix_fmt", "bgr24",
-        "-",
-    ]
-    return subprocess.Popen(
-        command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-        bufsize=10**8,
-    )
-
-
-def _kill_process(process):
-    if process is None:
-        return
-    try:
-        process.kill()
-    except OSError:
-        pass
-    try:
-        process.wait(timeout=1)
-    except Exception:
-        pass
+    return max(1, round(stream_fps / fps_target))
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -535,12 +521,9 @@ def _iter_video_sources():
     global _current_video
 
     if _source_folder:
-        files = sorted(
-            p for p in Path(_source_folder).iterdir()
-            if p.suffix.lower() in VIDEO_EXTS
-        )
+        files = sorted(p for p in Path(_source_folder).iterdir() if p.suffix.lower() in VIDEO_EXTS)
         if not files:
-            print(f"[WARN] Нет видео в {_source_folder}")
+            logger.warning(f"Нет видео в {_source_folder}")
             return
         idx = 0
         while True:
@@ -548,36 +531,48 @@ def _iter_video_sources():
             _current_video = p.name
             cap = cv2.VideoCapture(str(p))
             if cap.isOpened():
-                print(f"[INFO] Воспроизводим: {p.name}")
+                logger.info(f"Воспроизводим: {p.name}")
                 yield cap, p.name
             else:
-                print(f"[WARN] Не удалось открыть: {p}")
+                logger.warning(f"Не удалось открыть: {p}")
             idx += 1
     else:
-        url = _source_url
+        url = _source_url or ""
         while True:
             if _restart_event.is_set():
-                url = _source_url
+                url = _source_url or ""
                 _restart_event.clear()
-            print(f"[INFO] Подключаемся через ffmpeg: {url}")
+            logger.info(f"Подключаемся через ffmpeg: {url}")
             try:
                 process = _open_ffmpeg_stream(url)
                 yield process, url
             except FileNotFoundError as exc:
-                print(f"[ERROR] {exc}")
+                logger.error(f"{exc}")
                 time.sleep(3)
             except Exception as exc:
-                print(f"[WARN] FFmpeg error: {exc}")
-                print("[WARN] Повтор через 3 с…")
+                logger.warning(f"FFmpeg error: {exc}")
+                logger.warning("Повтор через 3 с…")
                 time.sleep(3)
 
 
 # ── Поток захвата + детекции ──────────────────────────────────────────────────
 
+
+def _read_frame(cap, process) -> tuple[bool, np.ndarray | None]:
+    """Прочитать один кадр из VideoCapture (папка) или из stdout FFmpeg (поток)."""
+    if cap is not None:
+        ok, frame = cap.read()
+        return ok, frame if ok else None
+    raw = process.stdout.read(STREAM_FRAME_SIZE) if process and process.stdout else b""
+    if len(raw) != STREAM_FRAME_SIZE:
+        return False, None
+    return True, np.frombuffer(raw, np.uint8).reshape((STREAM_HEIGHT, STREAM_WIDTH, 3))
+
+
 def capture_thread():
     global _age_clf
 
-    get_model()   # прогрев до начала стрима
+    get_model()  # прогрев до начала стрима
 
     sfps_timer, sfps_cnt = time.perf_counter(), 0
     dfps_timer, dfps_cnt = time.perf_counter(), 0
@@ -605,9 +600,6 @@ def capture_thread():
 
         frame_idx = 0
         last_annotated = None
-        is_folder_source = _source_folder is not None
-        cap = source if is_folder_source else None
-        process = None if is_folder_source else source
 
         while True:
             # ── Рестарт потока ────────────────────────────────────────────────
@@ -618,20 +610,7 @@ def capture_thread():
                     _kill_process(process)
                 break
 
-            # ── Горячая замена модели ─────────────────────────────────────────
-            if _model_reload_event.is_set():
-                _model_reload_event.clear()
-
             # ── Сброс кэша при смене камеры ───────────────────────────────────
-            if cap is not None:
-                ok, frame = cap.read()
-            else:
-                raw_frame = process.stdout.read(STREAM_FRAME_SIZE) if process and process.stdout else b""
-                ok = len(raw_frame) == STREAM_FRAME_SIZE
-                frame = None if not ok else np.frombuffer(
-                    raw_frame, np.uint8
-                ).reshape((STREAM_HEIGHT, STREAM_WIDTH, 3))
-
             if _clear_cache_event.is_set():
                 _clear_cache_event.clear()
                 last_annotated = None
@@ -640,19 +619,13 @@ def capture_thread():
                 # BboxEMA и AgeTracker уже сброшены в set_camera()
                 continue
 
-            # ── Читаем кадр ───────────────────────────────────────────────────
-            if cap is not None:
-                ok, frame = cap.read()
-            else:
-                raw = (process.stdout.read(STREAM_FRAME_SIZE)
-                       if process and process.stdout else b"")
-                ok = len(raw) == STREAM_FRAME_SIZE
-                frame = (None if not ok
-                         else np.frombuffer(raw, np.uint8)
-                                .reshape((STREAM_HEIGHT, STREAM_WIDTH, 3)))
+            # ── Читаем кадр (ровно один раз за итерацию) ──────────────────────
+            # Раньше кадр читался дважды за итерацию, и каждый второй кадр
+            # терялся: видео шло ×2 по скорости, детекция видела половину кадров.
+            ok, frame = _read_frame(cap, process)
 
-            if not ok:
-                print(f"[INFO] Конец/рестарт источника: {label}")
+            if not ok or frame is None:
+                logger.info(f"Конец/рестарт источника: {label}")
                 if cap is not None:
                     cap.release()
                 else:
@@ -686,9 +659,7 @@ def capture_thread():
                     with _model_lock:
                         mdl = _model
                     # Передаём frame_idx для периодической чистки мёртвых треков
-                    annotated, persons, ms = detect_and_analyze(
-                        mdl, frame, conf, imgsz, frame_idx
-                    )
+                    annotated, persons, ms = detect_and_analyze(mdl, frame, conf, imgsz, frame_idx)
                     last_annotated = annotated
 
                     dfps_cnt += 1
@@ -718,7 +689,8 @@ def capture_thread():
                             cw_zones = zone_mgr.crosswalk_zones()
                             if cw_zones:
                                 annotated = draw_traffic_light_states(
-                                    annotated, cw_zones, tl_states, fw_f, fh_f)
+                                    annotated, cw_zones, tl_states, fw_f, fh_f
+                                )
                     last_annotated = annotated
 
                     with state["lock"]:
@@ -733,17 +705,10 @@ def capture_thread():
             try:
                 _frame_queue.put_nowait(annotated)
             except queue.Full:
-                try:
+                with contextlib.suppress(queue.Empty):
                     _frame_queue.get_nowait()
-                except queue.Empty:
-                    pass
-                try:
+                with contextlib.suppress(queue.Full):
                     _frame_queue.put_nowait(annotated)
-                except queue.Full:
-                    pass
-
-        if process is not None:
-            _kill_process(process)
 
         if process is not None:
             _kill_process(process)
@@ -764,21 +729,29 @@ def main():
     group.add_argument("--url", type=str, help="HLS/RTSP URL потока")
     group.add_argument("--folder", type=str, help="Папка с видеофайлами")
 
-    parser.add_argument("--model", type=str, default="m",
-                        choices=["n", "s", "m", "l", "x"],
-                        help="Начальная модель (n/s/m/l/x). По умолчанию: m")
-    parser.add_argument("--conf", type=float, default=0.45,
-                        help="Порог уверенности детекции")
-    parser.add_argument("--imgsz", type=int, default=640,
-                        help="Размер входного изображения для YOLO")
-    parser.add_argument("--fpm", type=int, default=60,
-                        help="Лимит детекций в минуту. По умолчанию: 60")
-    parser.add_argument("--port", type=int, default=5000,
-                        help="Порт веб-сервера. По умолчанию: 5000")
-    parser.add_argument("--camera", type=str, default="",
-                        help="ID камеры для автозагрузки зон при старте")
+    parser.add_argument(
+        "--model",
+        type=str,
+        default="m",
+        choices=list(YOLO_SIZES),
+        help="Начальная модель (n/s/m/l/x). По умолчанию: m",
+    )
+    parser.add_argument("--conf", type=float, default=0.45, help="Порог уверенности детекции")
+    parser.add_argument(
+        "--imgsz", type=int, default=640, help="Размер входного изображения для YOLO"
+    )
+    parser.add_argument(
+        "--fpm", type=int, default=60, help="Лимит детекций в минуту. По умолчанию: 60"
+    )
+    parser.add_argument(
+        "--port", type=int, default=5000, help="Порт веб-сервера. По умолчанию: 5000"
+    )
+    parser.add_argument(
+        "--camera", type=str, default="", help="ID камеры для автозагрузки зон при старте"
+    )
 
     args = parser.parse_args()
+    setup_logging()
 
     with state["lock"]:
         state["model_size"] = args.model
@@ -794,7 +767,7 @@ def main():
 
     threading.Thread(target=capture_thread, daemon=True, name="capture").start()
 
-    print(f"\n[✓] Открой браузер → http://localhost:{args.port}\n")
+    logger.info(f"Открой браузер → http://localhost:{args.port}\n")
     app.run(host="0.0.0.0", port=args.port, debug=False, threaded=True)
 
 

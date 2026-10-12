@@ -1,29 +1,23 @@
-import sys
-from pathlib import Path
 import json
 
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from camera_map_web import (
-    load_json,
-    save_json,
-    load_map_config,
-    save_map_config,
-    load_zones_db,
-    save_zones_db,
-    discover_camera_ids,
-    resolve_video_folder,
-    list_videos,
-    first_video_for_camera,
-    camera_summary,
-    _clean_roi,
+from pedestrian_safety.services.camera_map_web import (
     VIDEO_EXTS,
+    _clean_roi,
+    camera_summary,
+    discover_camera_ids,
+    first_video_for_camera,
+    list_videos,
+    load_json,
+    load_map_config,
+    load_zones_db,
+    resolve_video_folder,
+    save_json,
+    save_map_config,
+    save_zones_db,
 )
 
 
 class TestCameraMapWeb:
-
     def test_load_json_existing(self, tmp_path):
         """Загрузка существующего JSON"""
         file_path = tmp_path / "test.json"
@@ -52,7 +46,8 @@ class TestCameraMapWeb:
 
     def test_load_map_config_default(self, tmp_path):
         """Загрузка конфигурации карты по умолчанию"""
-        import camera_map_web
+        from pedestrian_safety.services import camera_map_web
+
         original = camera_map_web.MAP_CONFIG_FILE
         camera_map_web.MAP_CONFIG_FILE = tmp_path / "none.json"
 
@@ -67,7 +62,8 @@ class TestCameraMapWeb:
 
     def test_save_map_config(self, tmp_path):
         """Сохранение конфигурации карты"""
-        import camera_map_web
+        from pedestrian_safety.services import camera_map_web
+
         original = camera_map_web.MAP_CONFIG_FILE
         camera_map_web.MAP_CONFIG_FILE = tmp_path / "map.json"
 
@@ -86,7 +82,8 @@ class TestCameraMapWeb:
 
     def test_load_zones_db(self, tmp_path):
         """Загрузка базы зон"""
-        import camera_map_web
+        from pedestrian_safety.services import camera_map_web
+
         original = camera_map_web.ZONES_FILE
         camera_map_web.ZONES_FILE = tmp_path / "zones.json"
 
@@ -102,7 +99,8 @@ class TestCameraMapWeb:
 
     def test_load_zones_db_default(self, tmp_path):
         """Загрузка базы зон по умолчанию"""
-        import camera_map_web
+        from pedestrian_safety.services import camera_map_web
+
         original = camera_map_web.ZONES_FILE
         camera_map_web.ZONES_FILE = tmp_path / "none.json"
 
@@ -114,7 +112,8 @@ class TestCameraMapWeb:
 
     def test_save_zones_db(self, tmp_path):
         """Сохранение базы зон"""
-        import camera_map_web
+        from pedestrian_safety.services import camera_map_web
+
         original = camera_map_web.ZONES_FILE
         camera_map_web.ZONES_FILE = tmp_path / "zones.json"
 
@@ -130,7 +129,8 @@ class TestCameraMapWeb:
 
     def test_discover_camera_ids(self, tmp_path):
         """Поиск ID камер"""
-        import camera_map_web
+        from pedestrian_safety.services import camera_map_web
+
         original_video = camera_map_web.VIDEO_ROOT
         original_zones = camera_map_web.ZONES_FILE
         original_map = camera_map_web.MAP_CONFIG_FILE
@@ -160,7 +160,8 @@ class TestCameraMapWeb:
 
     def test_resolve_video_folder_with_default(self, tmp_path):
         """Поиск папки с видео по умолчанию"""
-        import camera_map_web
+        from pedestrian_safety.services import camera_map_web
+
         original = camera_map_web.VIDEO_ROOT
         camera_map_web.VIDEO_ROOT = tmp_path / "video"
 
@@ -176,18 +177,15 @@ class TestCameraMapWeb:
 
     def test_resolve_video_folder_with_config(self, tmp_path):
         """Поиск папки с видео из конфигурации"""
-        import camera_map_web
+        from pedestrian_safety.services import camera_map_web
+
         original = camera_map_web.VIDEO_ROOT
         camera_map_web.VIDEO_ROOT = tmp_path / "video"
 
         config_folder = tmp_path / "custom_video" / "cam1"
         config_folder.mkdir(parents=True)
 
-        config = {
-            "cameras": {
-                "cam1": {"video_folder": str(config_folder)}
-            }
-        }
+        config = {"cameras": {"cam1": {"video_folder": str(config_folder)}}}
 
         try:
             folder = resolve_video_folder("cam1", config)
@@ -214,7 +212,8 @@ class TestCameraMapWeb:
 
     def test_first_video_for_camera(self, tmp_path):
         """Поиск первого видео для камеры"""
-        import camera_map_web
+        from pedestrian_safety.services import camera_map_web
+
         original = camera_map_web.VIDEO_ROOT
         camera_map_web.VIDEO_ROOT = tmp_path / "video"
 
@@ -233,7 +232,8 @@ class TestCameraMapWeb:
 
     def test_first_video_for_camera_not_found(self, tmp_path):
         """Поиск первого видео для камеры (нет видео)"""
-        import camera_map_web
+        from pedestrian_safety.services import camera_map_web
+
         original = camera_map_web.VIDEO_ROOT
         camera_map_web.VIDEO_ROOT = tmp_path / "video"
 
@@ -249,7 +249,8 @@ class TestCameraMapWeb:
 
     def test_camera_summary(self, tmp_path):
         """Краткая информация о камере"""
-        import camera_map_web
+        from pedestrian_safety.services import camera_map_web
+
         original = camera_map_web.VIDEO_ROOT
         camera_map_web.VIDEO_ROOT = tmp_path / "video"
 
@@ -257,11 +258,7 @@ class TestCameraMapWeb:
         video_folder.mkdir(parents=True)
         (video_folder / "test.mp4").touch()
 
-        config = {
-            "cameras": {
-                "cam1": {"label": "Camera 1", "lat": 55.0, "lon": 37.0}
-            }
-        }
+        config = {"cameras": {"cam1": {"label": "Camera 1", "lat": 55.0, "lon": 37.0}}}
         zones_db = {"cameras": {"cam1": {"zones": [{"id": "z1"}]}}}
 
         try:
