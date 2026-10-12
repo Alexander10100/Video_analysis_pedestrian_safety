@@ -13,7 +13,13 @@ ffmpeg/
 # Рантайм-данные
 *.jsonl
 
-# Python
+# Python / окружение / инструменты
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+tests/
+docs/
 __pycache__/
 *.pyc
 *.pyo

@@ -1,0 +1,70 @@
+# Pre-commit хуки: запускаются автоматически при `git commit`.
+# Установка (один раз после клонирования):
+#   poetry install
+#   poetry run pre-commit install --install-hooks -t pre-commit -t pre-push
+# Ручной прогон по всем файлам:
+#   poetry run pre-commit run --all-files
+
+default_language_version:
+  python: python3
+
+repos:
+  # ── Базовая гигиена файлов ────────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=auto]
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-added-large-files
+        args: [--maxkb=1024]          # веса моделей и видео — не в git
+      - id: debug-statements
+      - id: detect-private-key
+      - id: no-commit-to-branch       # в основную ветку — только через Pull Request
+        args: [--branch, main_branch]
+
+  # ── Ruff: линтер (с автоисправлением) и форматтер ─────────────────────────
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.0
+    hooks:
+      - id: ruff-check
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+
+  # ── Статическая типизация ─────────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v2.4.0
+    hooks:
+      - id: mypy
+        args: [--config-file=pyproject.toml]
+        files: ^src/
+        additional_dependencies: [numpy>=2.0, flask>=3.1]
+
+  # ── Poetry: валидность pyproject.toml и синхронность requirements.txt ─────
+  - repo: https://github.com/python-poetry/poetry
+    rev: 2.5.1
+    hooks:
+      - id: poetry-check
+        args: [--lock]                # lock-файл соответствует pyproject.toml
+  - repo: https://github.com/python-poetry/poetry-plugin-export
+    rev: 1.10.1
+    hooks:
+      - id: poetry-export
+        args: [-f, requirements.txt, -o, requirements.txt, --without-hashes]
+
+  # ── Тесты перед git push ──────────────────────────────────────────────────
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        entry: poetry run pytest -q
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
