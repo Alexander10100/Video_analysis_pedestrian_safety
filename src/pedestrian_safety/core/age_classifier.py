@@ -45,12 +45,16 @@ age_classifier.py — AutoCalibrator + AgeTracker + BboxEMA для stream_detect
 from __future__ import annotations
 
 import json
+import logging
 from collections import Counter, deque
 from pathlib import Path
 
+from pedestrian_safety.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
-CALIBRATIONS_DIR = Path("calibrations")
+CALIBRATIONS_DIR: Path = get_settings().calibrations_dir
 
 # Цвета BGR для отрисовки
 COLOR_ADULT = (50, 205, 50)
@@ -61,6 +65,7 @@ COLOR_UNKNOWN = (160, 160, 160)
 # ══════════════════════════════════════════════════════════════════════════════
 # BboxEMA — EMA-сглаживание координат bbox (без изменений)
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 class BboxEMA:
     """
@@ -89,8 +94,10 @@ class BboxEMA:
     def smooth(
         self,
         track_id: int,
-        x1: int, y1: int,
-        x2: int, y2: int,
+        x1: int,
+        y1: int,
+        x2: int,
+        y2: int,
     ) -> tuple[int, int, int, int]:
         incoming = (float(x1), float(y1), float(x2), float(y2))
         if track_id not in self._state:
@@ -98,13 +105,13 @@ class BboxEMA:
             return x1, y1, x2, y2
         a = self._alpha
         prev = self._state[track_id]
-        smoothed = tuple(a * c + (1.0 - a) * p for c, p in zip(incoming, prev))
+        smoothed = tuple(a * c + (1.0 - a) * p for c, p in zip(incoming, prev, strict=False))
         self._state[track_id] = smoothed  # type: ignore[assignment]
         return (
-            int(round(smoothed[0])),
-            int(round(smoothed[1])),
-            int(round(smoothed[2])),
-            int(round(smoothed[3])),
+            round(smoothed[0]),
+            round(smoothed[1]),
+            round(smoothed[2]),
+            round(smoothed[3]),
         )
 
     def evict(self, active_ids: set[int]) -> int:
@@ -124,6 +131,7 @@ class BboxEMA:
 # AgeTracker — temporal smoothing с асимметричным порогом flip
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 class AgeTracker:
     """
     Сглаживает покадровые классификации возраста по track_id.
@@ -141,8 +149,8 @@ class AgeTracker:
       warmup_scale         — масштаб уверенности в период прогрева
     """
 
-    DEFAULT_WINDOW = 10    # было 15 — уменьшено для быстрого прохода
-    DEFAULT_MIN_VOTES = 3     # было 5  — решение раньше
+    DEFAULT_WINDOW = 10  # было 15 — уменьшено для быстрого прохода
+    DEFAULT_MIN_VOTES = 3  # было 5  — решение раньше
     DEFAULT_FLIP_TO_CHILD = 0.55  # было 0.70 — легче заметить ребёнка
     DEFAULT_FLIP_TO_ADULT = 0.75  # строже для обратного перехода
     DEFAULT_WARMUP_SCALE = 0.50
@@ -151,7 +159,7 @@ class AgeTracker:
         self,
         window: int = DEFAULT_WINDOW,
         min_votes: int = DEFAULT_MIN_VOTES,
-        flip_threshold: float | None = None,    # legacy: задаёт оба порога
+        flip_threshold: float | None = None,  # legacy: задаёт оба порога
         flip_to_child: float = DEFAULT_FLIP_TO_CHILD,
         flip_to_adult: float = DEFAULT_FLIP_TO_ADULT,
         warmup_scale: float = DEFAULT_WARMUP_SCALE,
@@ -200,10 +208,7 @@ class AgeTracker:
         else:
             # Асимметричный порог: adult→child легче, child→adult строже
             if winner != prev_stable:
-                if winner == "child":
-                    threshold = self._flip_to_child
-                else:
-                    threshold = self._flip_to_adult
+                threshold = self._flip_to_child if winner == "child" else self._flip_to_adult
 
                 if winner_share >= threshold:
                     self._stable[track_id] = winner
@@ -238,6 +243,7 @@ class AgeTracker:
 # AgeClassifier — улучшенная классификация по высоте + ширине bbox
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 class AgeClassifier:
     """
     Потокобезопасный (read-only после load) классификатор возраста.
@@ -259,9 +265,9 @@ class AgeClassifier:
     """
 
     # Основные пороги: bbox_height / ref_adult_height
-    CHILD_RATIO = 0.82   # было 0.78 — поднято: дети дают ratio 0.80-0.88
-    UNCERTAIN_RATIO = 0.90   # было 0.88 — чуть расширена зона неопределённости
-    ADULT_RATIO = 0.90   # выше этого — уверенно взрослый
+    CHILD_RATIO = 0.82  # было 0.78 — поднято: дети дают ratio 0.80-0.88
+    UNCERTAIN_RATIO = 0.90  # было 0.88 — чуть расширена зона неопределённости
+    ADULT_RATIO = 0.90  # выше этого — уверенно взрослый
 
     # Вторичный признак: h/w (aspect ratio) bbox
     # Взрослый стоя ≈ 2.5–3.5 | ребёнок ≈ 1.8–2.5
@@ -279,7 +285,7 @@ class AgeClassifier:
     # ── Фабричный метод ───────────────────────────────────────────────────────
 
     @classmethod
-    def load_for_camera(cls, camera_id: str, frame_height: int) -> "AgeClassifier":
+    def load_for_camera(cls, camera_id: str, frame_height: int) -> AgeClassifier:
         """
         Загрузить калибровку для камеры из calibrations/<camera_id>.json.
         Если файла нет — вернуть объект без эталонов (всё → adult).
@@ -288,20 +294,14 @@ class AgeClassifier:
         path = CALIBRATIONS_DIR / f"{camera_id}.json"
 
         if not path.exists():
-            print(
-                f"[AgeClassifier] Калибровка не найдена: {path}. "
-                "Все детекции → adult."
-            )
+            logger.info(f"Калибровка не найдена: {path}. Все детекции → adult.")
             return obj
 
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             raw_refs = data.get("refs", {})
             if not raw_refs:
-                print(
-                    f"[AgeClassifier] Калибровка {path} пуста (нет эталонов). "
-                    "Все детекции → adult."
-                )
+                logger.info(f"Калибровка {path} пуста (нет эталонов). Все детекции → adult.")
                 return obj
 
             saved_h = data.get("frame_height", frame_height)
@@ -309,13 +309,13 @@ class AgeClassifier:
 
             obj._refs = {int(k): v * scale for k, v in raw_refs.items()}
             obj._calibrated = True
-            print(
-                f"[AgeClassifier] Камера '{camera_id}': загружено "
+            logger.info(
+                f"Камера '{camera_id}': загружено "
                 f"{len(obj._refs)} зон из {cls.N_BANDS}  "
                 f"(масштаб ×{scale:.3f})"
             )
         except Exception as exc:
-            print(f"[AgeClassifier] Ошибка загрузки {path}: {exc}. Все → adult.")
+            logger.info(f"Ошибка загрузки {path}: {exc}. Все → adult.")
 
         return obj
 
@@ -323,8 +323,10 @@ class AgeClassifier:
 
     def classify(
         self,
-        x1: int, y1: int,
-        x2: int, y2: int,
+        x1: int,
+        y1: int,
+        x2: int,
+        y2: int,
     ) -> tuple[str, float]:
         """
         Вернуть (label, confidence).
@@ -411,6 +413,7 @@ class AgeClassifier:
 
 
 # ── Утилита цвета ──────────────────────────────────────────────────────────────
+
 
 def get_age_color(label: str) -> tuple[int, int, int]:
     """BGR цвет для отрисовки по возрастному ярлыку."""

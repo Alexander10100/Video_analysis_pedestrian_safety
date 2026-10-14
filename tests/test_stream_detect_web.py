@@ -1,14 +1,9 @@
 # tests/test_stream_detect_web.py
-import sys
-from pathlib import Path
 import json
-from unittest.mock import MagicMock
 import queue
+from unittest.mock import MagicMock
 
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from stream_detect_web import create_app
+from pedestrian_safety.services.stream_detect_web import create_app
 
 
 class TestStreamDetectWeb:
@@ -20,7 +15,7 @@ class TestStreamDetectWeb:
         ctx.state = {"lock": MagicMock()}
         app = create_app(ctx)
         assert app is not None
-        assert app.name == "stream_detect_web"
+        assert app.name == "pedestrian_safety.services.stream_detect_web"
 
     def test_index_route(self):
         """Тест главной страницы"""
@@ -149,7 +144,8 @@ class TestStreamDetectWeb:
 
     def test_zones_get_route(self, tmp_path):
         """Тест получения зон"""
-        import stream_detect_web
+        from pedestrian_safety.services import stream_detect_web
+
         original = stream_detect_web.ZONES_FILE
         stream_detect_web.ZONES_FILE = tmp_path / "zones.json"
 
@@ -173,7 +169,8 @@ class TestStreamDetectWeb:
 
     def test_zones_save_route(self, tmp_path):
         """Тест сохранения зон"""
-        import stream_detect_web
+        from pedestrian_safety.services import stream_detect_web
+
         original = stream_detect_web.ZONES_FILE
         stream_detect_web.ZONES_FILE = tmp_path / "zones.json"
 
@@ -200,7 +197,8 @@ class TestStreamDetectWeb:
 
     def test_cameras_route(self, tmp_path):
         """Тест списка камер"""
-        import stream_detect_web
+        from pedestrian_safety.services import stream_detect_web
+
         original_zones = stream_detect_web.ZONES_FILE
         stream_detect_web.ZONES_FILE = tmp_path / "zones.json"
 

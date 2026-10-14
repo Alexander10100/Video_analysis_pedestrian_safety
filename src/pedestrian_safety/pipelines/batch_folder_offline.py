@@ -2,26 +2,31 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import subprocess
 import sys
 import time
-from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 
-from age_classifier import AgeTracker, BboxEMA
-from offline_detect import (
+from pedestrian_safety.config import get_settings
+from pedestrian_safety.core.age_classifier import AgeTracker, BboxEMA
+from pedestrian_safety.core.traffic_light import TrafficLightAnalyzer
+from pedestrian_safety.core.violation_detector import ViolationDetector
+from pedestrian_safety.logging_config import setup_logging
+from pedestrian_safety.pipelines.offline_detect import (
     VIDEO_EXTS,
     _build_pipeline,
     _print_stats,
     load_yolo,
     process_video,
 )
-from traffic_light import TrafficLightAnalyzer
-from violation_detector import ViolationDetector
+from pedestrian_safety.pipelines.report_generator import build_report_data
 
-ZONES_FILE = Path("zones.json")
+logger = logging.getLogger(__name__)
+
+ZONES_FILE: Path = get_settings().zones_file
 COOLDOWN_SECONDS = 10.0
 
 
@@ -29,7 +34,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Batch pipeline by folders: annotate zones on the first video of each folder, "
-            "then process all videos, save annotated outputs, and build per-folder plus combined reports."
+            "then process all videos, save annotated outputs, "
+            "and build per-folder plus combined reports."
         ),
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
@@ -149,7 +155,8 @@ def prompt_annotation(folder: Path, camera_id: str, port: int) -> None:
     ensure_camera_entry(camera_id)
     cmd = [
         sys.executable,
-        "stream_detect.py",
+        "-m",
+        "pedestrian_safety.services.stream_detect",
         "--folder",
         str(folder),
         "--port",
@@ -157,13 +164,13 @@ def prompt_annotation(folder: Path, camera_id: str, port: int) -> None:
         "--camera",
         camera_id,
     ]
-    proc = subprocess.Popen(cmd, cwd=Path(__file__).resolve().parent)
+    proc = subprocess.Popen(cmd, cwd=get_settings().data_dir)
     try:
         print()
-        print(f"[ANNOTATE] Folder: {folder}")
-        print(f"[ANNOTATE] Camera ID: {camera_id}")
-        print(f"[ANNOTATE] Open http://localhost:{port}")
-        print("[ANNOTATE] Check the first video, adjust zones and save them in the UI.")
+        logger.info(f"Folder: {folder}")
+        logger.info(f"Camera ID: {camera_id}")
+        logger.info(f"Open http://localhost:{port}")
+        logger.info("Check the first video, adjust zones and save them in the UI.")
         input("[ANNOTATE] Press Enter here when markup for this folder is finished...")
     finally:
         proc.terminate()
@@ -172,71 +179,6 @@ def prompt_annotation(folder: Path, camera_id: str, port: int) -> None:
         except subprocess.TimeoutExpired:
             proc.kill()
             proc.wait(timeout=5)
-
-
-def build_report_data(violations: list[dict], camera_id: str) -> dict:
-    by_type = defaultdict(int)
-    by_zone = defaultdict(int)
-    by_age = defaultdict(int)
-    timeline = defaultdict(lambda: defaultdict(int))
-    unique_tracks = set()
-    confidence_stats: list[float] = []
-
-    for violation in violations:
-        track_id = violation.get("track_id")
-        if track_id is not None:
-            unique_tracks.add(track_id)
-
-        violation_type = violation.get("violation_type", "unknown")
-        zone_label = violation.get("zone_label", "")
-        age_label = violation.get("age_label", "unknown")
-
-        by_type[violation_type] += 1
-        by_zone[zone_label] += 1
-        by_age[age_label] += 1
-
-        if "person_conf" in violation:
-            confidence_stats.append(float(violation["person_conf"]))
-
-        try:
-            minute = (
-                datetime.fromisoformat(violation["timestamp"])
-                .replace(second=0, microsecond=0)
-                .isoformat()
-            )
-            timeline[minute][violation_type] += 1
-        except Exception:
-            pass
-
-    avg_conf = sum(confidence_stats) / len(confidence_stats) if confidence_stats else 0.0
-    min_conf = min(confidence_stats) if confidence_stats else 0.0
-    max_conf = max(confidence_stats) if confidence_stats else 0.0
-
-    return {
-        "generated_at": datetime.now().isoformat(),
-        "camera_id": camera_id,
-        "total_violations": len(violations),
-        "unique_persons": len(unique_tracks),
-        "confidence": {
-            "average": round(avg_conf, 3),
-            "min": round(min_conf, 3),
-            "max": round(max_conf, 3),
-        },
-        "summary": {
-            "by_type": dict(by_type),
-            "by_zone": dict(by_zone),
-            "by_age": dict(by_age),
-        },
-        "timeline": [
-            {
-                "timestamp": minute,
-                "total": sum(counts.values()),
-                "by_type": dict(counts),
-            }
-            for minute, counts in sorted(timeline.items())
-        ],
-        "raw_violations": violations,
-    }
 
 
 def summarize_processing_stats(items: list[dict]) -> dict:
@@ -274,7 +216,9 @@ def make_violation_logger(camera_id: str, video_started_at: float, sink: list[di
             cooldown[item.track_id] = video_second
             sink.append(
                 {
-                    "timestamp": datetime.fromtimestamp(video_started_at + video_second).isoformat(),
+                    "timestamp": datetime.fromtimestamp(
+                        video_started_at + video_second
+                    ).isoformat(),
                     "track_id": item.track_id,
                     "camera_id": camera_id,
                     "violation_type": item.violation,
@@ -314,7 +258,7 @@ def process_folder_job(
     if not videos:
         return {"camera_id": camera_id, "skipped": True}
 
-    print(f"[START] {camera_id}: {len(videos)} videos")
+    logger.info(f"{camera_id}: {len(videos)} videos")
 
     model = load_yolo(model_size, device=device)
     zone_mgr, _, _ = _build_pipeline(camera_id)
@@ -366,7 +310,9 @@ def process_folder_job(
             imgsz=imgsz,
             detect_every=detect_every,
             max_frames=max_frames,
-            violation_callback=make_violation_logger(camera_id, video_started_at, folder_violations),
+            violation_callback=make_violation_logger(
+                camera_id, video_started_at, folder_violations
+            ),
             preload_video=preload_video,
             writer_queue_size=writer_queue_size,
             inference_batch_size=inference_batch_size,
@@ -400,7 +346,7 @@ def process_folder_job(
         encoding="utf-8",
     )
 
-    print(f"[DONE] {camera_id}: violations={report_data['total_violations']}")
+    logger.info(f"{camera_id}: violations={report_data['total_violations']}")
 
     return {
         "camera_id": camera_id,
@@ -486,10 +432,7 @@ def build_combined_report(results: list[dict]) -> dict:
     combined["videos_count"] = len(all_videos)
     combined["videos"] = all_videos
     combined["processing_stats"] = summarize_processing_stats(
-        [
-            folder_info.get("processing_stats", {})
-            for folder_info in by_folder.values()
-        ]
+        [folder_info.get("processing_stats", {}) for folder_info in by_folder.values()]
     )
     return combined
 
@@ -531,10 +474,11 @@ def load_json_if_exists(path: Path) -> dict | None:
 
 
 def main() -> None:
+    setup_logging()
     args = parse_args()
     folders = collect_video_folders(args)
     if not folders:
-        print("[ERROR] No folders with video files were found.")
+        logger.error("No folders with video files were found.")
         sys.exit(1)
 
     annotated_root = Path(args.annotated_root)
@@ -542,9 +486,9 @@ def main() -> None:
     detect_every = max(1, args.detect_every)
     workers = max(1, min(args.workers, len(folders)))
 
-    print(f"[INFO] Folders found: {len(folders)}")
+    logger.info(f"Folders found: {len(folders)}")
     for folder in folders:
-        print(f"  - {folder}")
+        logger.info(f"  - {folder}")
 
     for folder in folders:
         camera_id = folder.name
@@ -578,8 +522,8 @@ def main() -> None:
             combined_report = merge_combined_reports(existing_report, combined_report)
     write_json(combined_report_path, combined_report)
 
-    print(f"[OK] Batch processing finished. Workers: {workers}")
-    print(f"[OK] Combined report: {combined_report_path}")
+    logger.info(f"Batch processing finished. Workers: {workers}")
+    logger.info(f"Combined report: {combined_report_path}")
 
 
 if __name__ == "__main__":

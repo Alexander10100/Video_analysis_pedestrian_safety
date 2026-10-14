@@ -23,18 +23,22 @@ import numpy as np
 
 try:
     from PIL import Image, ImageDraw, ImageFont
+
     _PIL_AVAILABLE = True
 except ImportError:
     _PIL_AVAILABLE = False
 
-from zone_manager import RoadZone, ZoneManager
-from traffic_light import TrafficLightAnalyzer, STATE_UNKNOWN
-
+from pedestrian_safety.core.traffic_light import STATE_UNKNOWN, TrafficLightAnalyzer
+from pedestrian_safety.core.zone_manager import RoadZone, ZoneManager
 
 # ── Утилита: фильтрация водителей/пассажиров в транспорте ────────────────────
 
+
 def person_inside_vehicle(
-    px1: int, py1: int, px2: int, py2: int,
+    px1: int,
+    py1: int,
+    px2: int,
+    py2: int,
     vehicle_boxes: list[tuple[int, int, int, int]],
     overlap_thresh: float = 0.45,
 ) -> bool:
@@ -55,8 +59,8 @@ def person_inside_vehicle(
         return False
 
     ph = py2 - py1
-    lower_y1 = py1 + int(ph * 0.40)   # нижние 60%
-    lower_area = (px2 - px1) * (lower_y1 - py2).__abs__()
+    lower_y1 = py1 + int(ph * 0.40)  # нижние 60%
+    lower_area = (px2 - px1) * abs(py2 - lower_y1)
     if lower_area <= 0:
         return False
 
@@ -117,8 +121,7 @@ def _put_text_pil(
 ) -> np.ndarray:
     if not _PIL_AVAILABLE:
         r, g, b = color_bgr
-        cv2.putText(frame, text, xy, cv2.FONT_HERSHEY_SIMPLEX,
-                    0.50, (b, g, r), 1, cv2.LINE_AA)
+        cv2.putText(frame, text, xy, cv2.FONT_HERSHEY_SIMPLEX, 0.50, (b, g, r), 1, cv2.LINE_AA)
         return frame
 
     font = _get_pil_font(font_size)
@@ -132,8 +135,7 @@ def _put_text_pil(
 
     if bg_color_bgr is not None:
         br, bg, bb = bg_color_bgr
-        draw.rectangle([x, y, x + tw + padding * 2, y + th + padding * 2],
-                       fill=(bb, bg, br))
+        draw.rectangle([x, y, x + tw + padding * 2, y + th + padding * 2], fill=(bb, bg, br))
 
     r, g, b = color_bgr
     draw.text((x + padding, y + padding), text, font=font, fill=(b, g, r))
@@ -144,13 +146,13 @@ def _put_text_pil(
 @dataclass
 class PersonViolation:
     track_id: int
-    violation: str    # "none" | "road_trespass" | "red_light"
+    violation: str  # "none" | "road_trespass" | "red_light"
     zone_label: str
     box: tuple  # нормализованные (nx1, ny1, nx2, ny2)
     color: tuple  # BGR
     note: str = ""
     conf: float = 0.0
-    age_label: str = "adult"   # "adult" | "child" | "unknown"
+    age_label: str = "adult"  # "adult" | "child" | "unknown"
     age_conf: float = 0.0
 
 
@@ -172,14 +174,16 @@ class ViolationDetector:
         crosswalk_zones = self._zmgr.crosswalk_zones()
         tl_states = self._tla.get_all_states()
 
-        return [
-            self._classify(*b, road_zones, crosswalk_zones, tl_states)
-            for b in boxes
-        ]
+        return [self._classify(b, road_zones, crosswalk_zones, tl_states) for b in boxes]
 
-    def _classify(self, tid, nx1, ny1, nx2, ny2, conf,
-                  age_label, age_conf,
-                  road_zones, crosswalk_zones, tl_states) -> PersonViolation:
+    def _classify(
+        self,
+        box: tuple,
+        road_zones: list[RoadZone],
+        crosswalk_zones: list[RoadZone],
+        tl_states: dict,
+    ) -> PersonViolation:
+        tid, nx1, ny1, nx2, ny2, conf, age_label, age_conf = box
 
         foot_x = (nx1 + nx2) / 2
         foot_y = ny2
@@ -191,19 +195,29 @@ class ViolationDetector:
 
             if not cw.has_light:
                 return PersonViolation(
-                    tid, "none", cw.label,
-                    (nx1, ny1, nx2, ny2), COLOR_CROSSWALK,
-                    "переход без светофора", conf,
-                    age_label, age_conf,
+                    tid,
+                    "none",
+                    cw.label,
+                    (nx1, ny1, nx2, ny2),
+                    COLOR_CROSSWALK,
+                    "переход без светофора",
+                    conf,
+                    age_label,
+                    age_conf,
                 )
 
             st = tl_states.get(cw.id)
             if st is None or st["state"] == STATE_UNKNOWN:
                 return PersonViolation(
-                    tid, "none", cw.label,
-                    (nx1, ny1, nx2, ny2), COLOR_WARNING,
-                    "светофор: неизвестно", conf,
-                    age_label, age_conf,
+                    tid,
+                    "none",
+                    cw.label,
+                    (nx1, ny1, nx2, ny2),
+                    COLOR_WARNING,
+                    "светофор: неизвестно",
+                    conf,
+                    age_label,
+                    age_conf,
                 )
 
             light_type = st.get("light_type", "pedestrian")
@@ -216,9 +230,15 @@ class ViolationDetector:
                 else:
                     note = "зелёный" if st["state"] == "green" else "grace"
                 return PersonViolation(
-                    tid, "none", cw.label,
-                    (nx1, ny1, nx2, ny2), COLOR_CROSSWALK,
-                    note, conf, age_label, age_conf,
+                    tid,
+                    "none",
+                    cw.label,
+                    (nx1, ny1, nx2, ny2),
+                    COLOR_CROSSWALK,
+                    note,
+                    conf,
+                    age_label,
+                    age_conf,
                 )
 
             # Нарушение
@@ -228,26 +248,43 @@ class ViolationDetector:
                 note = f"красный ({st['state']})"
 
             return PersonViolation(
-                tid, "red_light", cw.label,
-                (nx1, ny1, nx2, ny2), COLOR_VIOLATION,
-                note, conf, age_label, age_conf,
+                tid,
+                "red_light",
+                cw.label,
+                (nx1, ny1, nx2, ny2),
+                COLOR_VIOLATION,
+                note,
+                conf,
+                age_label,
+                age_conf,
             )
 
         # 2. Road-зоны
         for rz in road_zones:
             if rz.contains_point(foot_x, foot_y):
                 return PersonViolation(
-                    tid, "road_trespass", rz.label,
-                    (nx1, ny1, nx2, ny2), COLOR_VIOLATION,
-                    "на проезжей части", conf,
-                    age_label, age_conf,
+                    tid,
+                    "road_trespass",
+                    rz.label,
+                    (nx1, ny1, nx2, ny2),
+                    COLOR_VIOLATION,
+                    "на проезжей части",
+                    conf,
+                    age_label,
+                    age_conf,
                 )
 
         # 3. Вне зон
         return PersonViolation(
-            tid, "none", "",
-            (nx1, ny1, nx2, ny2), COLOR_OK, "",
-            conf, age_label, age_conf,
+            tid,
+            "none",
+            "",
+            (nx1, ny1, nx2, ny2),
+            COLOR_OK,
+            "",
+            conf,
+            age_label,
+            age_conf,
         )
 
 
@@ -297,7 +334,8 @@ def draw_violations(
         lbl_y = max(y1 - 2, 20)
 
         frame = _put_text_pil(
-            frame, lbl,
+            frame,
+            lbl,
             (x1, lbl_y - font_sz - 6),
             color_bgr=(240, 240, 240),
             font_size=font_sz,
@@ -311,7 +349,8 @@ def draw_violations(
         if pv.age_conf > 0:
             age_text += f" {pv.age_conf:.0%}"
         frame = _put_text_pil(
-            frame, age_text,
+            frame,
+            age_text,
             (x2 - 55, lbl_y - font_sz - 6),
             color_bgr=(240, 240, 240),
             font_size=11,
@@ -403,7 +442,11 @@ def draw_traffic_light_states(
                 roi_state = per_roi[roi_idx]["state"]
                 # Для vehicle отдельно пересчитываем отображаемый ключ
                 if light_type == "vehicle":
-                    from traffic_light import pedestrian_allowed, LIGHT_TYPE_VEHICLE
+                    from pedestrian_safety.core.traffic_light import (
+                        LIGHT_TYPE_VEHICLE,
+                        pedestrian_allowed,
+                    )
+
                     roi_allowed = pedestrian_allowed(roi_state, LIGHT_TYPE_VEHICLE)
                     roi_key = "vehicle_allowed" if roi_allowed else roi_state
                 else:
@@ -420,7 +463,8 @@ def draw_traffic_light_states(
             full_lbl = f"{roi_label}{type_mark}  {roi_conf}"
             lbl_y = max(y1 - 2, 22)
             frame = _put_text_pil(
-                frame, full_lbl,
+                frame,
+                full_lbl,
                 (x1, lbl_y - 22),
                 color_bgr=(230, 230, 230),
                 font_size=13,
@@ -429,7 +473,8 @@ def draw_traffic_light_states(
             )
             name_lbl = f"{zone.label} #{roi_idx + 1}" if len(rois) > 1 else zone.label
             frame = _put_text_pil(
-                frame, name_lbl,
+                frame,
+                name_lbl,
                 (x1 + 2, y2 - 18),
                 color_bgr=(
                     min(255, roi_color[0] + 40),
@@ -480,7 +525,8 @@ def draw_zones(
         cx = int(np.mean([p[0] for p in pts]))
         cy = int(np.mean([p[1] for p in pts]))
         frame = _put_text_pil(
-            frame, z.label,
+            frame,
+            z.label,
             (cx - 30, cy - 10),
             color_bgr=color_bgr,
             font_size=14,

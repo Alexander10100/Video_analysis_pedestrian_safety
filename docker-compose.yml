@@ -2,8 +2,8 @@ services:
   stream_detect:
     image: ${DOCKERHUB_USERNAME:-local}/video-analysis-pedestrian-safety-stream-detect:${IMAGE_TAG:-latest}
     # Для HLS/RTSP потока замените на:
-    # command: python stream_detect.py --url "https://..."
-    command: python stream_detect.py --folder /app/video
+    # command: psafety-stream --url "https://..."
+    command: psafety-stream --folder /app/video
     ports:
       - "5000:5000"
     volumes:
@@ -16,7 +16,7 @@ services:
 
   heatmap:
     image: ${DOCKERHUB_USERNAME:-local}/video-analysis-pedestrian-safety-heatmap:${IMAGE_TAG:-latest}
-    command: python heatmap_web.py
+    command: psafety-heatmap
     ports:
       - "5055:5055"
     volumes:
@@ -27,7 +27,7 @@ services:
 
   camera_map:
     image: ${DOCKERHUB_USERNAME:-local}/video-analysis-pedestrian-safety-camera-map:${IMAGE_TAG:-latest}
-    command: python camera_map_web.py
+    command: psafety-camera-map
     ports:
       - "5060:5060"
     environment:

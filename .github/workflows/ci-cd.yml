@@ -1,42 +1,85 @@
-name: CI - Tests, Linter & Docker Hub
+name: CI - Lint, Tests & Docker Hub
 
 on:
   push:
     branches:
-      - '**' 
+      - '**'
   pull_request:
     branches:
-      - '**'  
+      - '**'
   workflow_dispatch:
 
 jobs:
-  test:
+  lint:
+    name: Lint (pre-commit)
     runs-on: ubuntu-latest
-    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
-      
-      - name: Install dependencies
+          python-version: '3.11'
+
+      - name: Cache pre-commit environments
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+
+      - name: Run pre-commit hooks (ruff, mypy, poetry-check, ...)
+        env:
+          # в CI проверяем код, а не ветку — запрет коммитов в main_branch тут не нужен
+          SKIP: no-commit-to-branch
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install ruff pytest pytest-cov
-      
-      - name: Lint with Ruff (PEP8)
-        run: ruff check . --output-format=github
-      
-      - name: Run tests with pytest
-        run: |
-          pytest tests/ -v --cov=. --cov-report=term
+          pip install pre-commit
+          pre-commit run --all-files --show-diff-on-failure
+
+  test:
+    name: Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Poetry
+        run: pipx install "poetry>=2.5"
+
+      - name: Cache virtualenv
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('poetry.lock') }}
+
+      - name: Install dependencies (from poetry.lock)
+        run: poetry install --no-interaction
+
+      - name: Type check (mypy)
+        run: poetry run mypy
+
+      - name: Run tests with coverage
+        run: poetry run pytest --cov --cov-report=term --cov-report=xml
+
+      - name: Upload coverage report
+        if: matrix.python-version == '3.11'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
 
   docker:
-    needs: test
+    needs: [lint, test]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main_branch'
     runs-on: ubuntu-latest
 

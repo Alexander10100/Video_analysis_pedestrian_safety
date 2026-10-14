@@ -6,14 +6,14 @@ calibrate_camera.py — Офлайн-калибровка AutoCalibrator по в
 Никакого Flask и трансляции — только прогресс в консоли.
 
 Использование:
-    python calibrate_camera.py --video cam1.mp4 --camera cam_01
+    psafety-calibrate --video cam1.mp4 --camera cam_01
 
     # Выбрать модель, порог, ограничить число кадров
-    python calibrate_camera.py --video cam1.mp4 --camera cam_01 \\
+    psafety-calibrate --video cam1.mp4 --camera cam_01 \\
         --model s --conf 0.4 --max-frames 2000
 
     # Принудительно перезаписать существующую калибровку
-    python calibrate_camera.py --video cam1.mp4 --camera cam_01 --force
+    psafety-calibrate --video cam1.mp4 --camera cam_01 --force
 
 Результат:
     calibrations/<camera_id>.json  — файл калибровки, подхватывается stream_detect.py
@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 import time
 from collections import defaultdict
@@ -36,8 +37,13 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from pedestrian_safety.config import get_settings
+from pedestrian_safety.logging_config import setup_logging
 
-CALIBRATIONS_DIR = Path("calibrations")
+logger = logging.getLogger(__name__)
+
+
+CALIBRATIONS_DIR: Path = get_settings().calibrations_dir
 SUPPORTED_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".ts", ".webm", ".m4v"}
 
 
@@ -107,7 +113,7 @@ class AutoCalibrator:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "AutoCalibrator":
+    def from_dict(cls, d: dict) -> AutoCalibrator:
         obj = cls(frame_height=d["frame_height"])
         obj._refs = {int(k): v for k, v in d.get("refs", {}).items()}
         return obj
@@ -142,10 +148,10 @@ def load_model(size: str):
     try:
         from ultralytics import YOLO
     except ImportError:
-        print("[ERROR] pip install ultralytics")
+        logger.error("pip install ultralytics")
         sys.exit(1)
     name = f"yolov8{size}.pt"
-    print(f"[INFO] Загружаем модель {name}...")
+    logger.info(f"Загружаем модель {name}...")
     return YOLO(name)
 
 
@@ -179,14 +185,14 @@ def calibrate_video(
     out_path = CALIBRATIONS_DIR / f"{camera_id}.json"
 
     if out_path.exists() and not force:
-        print(f"[INFO] Калибровка уже существует: {out_path}")
-        print("       Используйте --force для перезаписи.")
+        logger.info(f"Калибровка уже существует: {out_path}")
+        logger.info("       Используйте --force для перезаписи.")
         data = json.loads(out_path.read_text(encoding="utf-8"))
         return AutoCalibrator.from_dict(data)
 
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
-        print(f"[ERROR] Не удалось открыть видео: {video_path}")
+        logger.error(f"Не удалось открыть видео: {video_path}")
         sys.exit(1)
 
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -195,10 +201,10 @@ def calibrate_video(
     frame_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
 
     limit = max_frames if max_frames > 0 else total_frames
-    print(f"\n[INFO] Видео: {video_path.name}")
-    print(f"       Разрешение: {frame_w}×{frame_h}  FPS: {video_fps:.1f}")
-    print(f"       Всего кадров: {total_frames}  Лимит: {limit}")
-    print(f"       Камера: {camera_id}  Выход: {out_path}\n")
+    logger.info(f"Видео: {video_path.name}")
+    logger.info(f"       Разрешение: {frame_w}×{frame_h}  FPS: {video_fps:.1f}")
+    logger.info(f"       Всего кадров: {total_frames}  Лимит: {limit}")
+    logger.info(f"       Камера: {camera_id}  Выход: {out_path}\n")
 
     model = load_model(model_size)
     calibrator = AutoCalibrator(frame_height=frame_h)
@@ -212,7 +218,7 @@ def calibrate_video(
     # Детектируем каждые N кадров из FPS (≈ 2 кадра/сек из видео достаточно)
     detect_every = max(1, int(video_fps / 2))
 
-    print(f"[INFO] Детектируем каждый {detect_every}-й кадр из видео...")
+    logger.info(f"Детектируем каждый {detect_every}-й кадр из видео...")
     print()
 
     while frame_idx < limit:
@@ -225,8 +231,12 @@ def calibrate_video(
             continue
 
         results = model(
-            frame, classes=[0], conf=conf,
-            iou=0.45, imgsz=imgsz, verbose=False,
+            frame,
+            classes=[0],
+            conf=conf,
+            iou=0.45,
+            imgsz=imgsz,
+            verbose=False,
         )[0]
 
         detect_cnt += 1
@@ -249,11 +259,14 @@ def calibrate_video(
             eta_str = f"{int(eta_sec // 60)}:{int(eta_sec % 60):02d}"
             st = calibrator.status()
 
-            print(f"\r  {_progress_bar(frame_idx, limit)}  "
-                  f"boxes:{total_boxes}  "
-                  f"calib:{st['percent']}%  "
-                  f"ETA:{eta_str}   ",
-                  end="", flush=True)
+            print(
+                f"\r  {_progress_bar(frame_idx, limit)}  "
+                f"boxes:{total_boxes}  "
+                f"calib:{st['percent']}%  "
+                f"ETA:{eta_str}   ",
+                end="",
+                flush=True,
+            )
 
     cap.release()
     print()  # новая строка после \r
@@ -263,25 +276,25 @@ def calibrate_video(
     st = calibrator.status()
 
     elapsed = time.perf_counter() - t_start
-    print(f"\n[✓] Готово! Обработано {frame_idx} кадров за {elapsed:.1f} с")
-    print(f"    Всего людей замечено: {total_boxes}")
-    print(f"    Калибровка: {st['percent']}%  ({st['ready_bands']}/{st['total_bands']} зон)")
+    logger.info(f"Готово! Обработано {frame_idx} кадров за {elapsed:.1f} с")
+    logger.info(f"    Всего людей замечено: {total_boxes}")
+    logger.info(f"    Калибровка: {st['percent']}%  ({st['ready_bands']}/{st['total_bands']} зон)")
 
     if st["refs_px"]:
-        print("    Эталоны: " + "  ".join(
-            f"зона{k}={v:.0f}px"
-            for k, v in sorted(st["refs_px"].items())
-        ))
+        logger.info(
+            "    Эталоны: "
+            + "  ".join(f"зона{k}={v:.0f}px" for k, v in sorted(st["refs_px"].items()))
+        )
     else:
-        print("    [WARN] Эталоны не построены — людей в видео не обнаружено.")
-        print("           В stream_detect все детекции будут трактоваться как взрослые.")
+        logger.info("    [WARN] Эталоны не построены — людей в видео не обнаружено.")
+        logger.info("           В stream_detect все детекции будут трактоваться как взрослые.")
 
     # Сохранение
     out_path.write_text(
         json.dumps(calibrator.to_dict(), ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    print(f"    Сохранено: {out_path}\n")
+    logger.info(f"    Сохранено: {out_path}\n")
 
     return calibrator
 
@@ -290,36 +303,45 @@ def calibrate_video(
 # CLI
 # ══════════════════════════════════════════════
 def main():
-    parser = argparse.ArgumentParser(
-        description="Офлайн-калибровка AutoCalibrator по видеофайлу"
+    setup_logging()
+    parser = argparse.ArgumentParser(description="Офлайн-калибровка AutoCalibrator по видеофайлу")
+    parser.add_argument("--video", required=True, type=str, help="Путь к видеофайлу")
+    parser.add_argument(
+        "--camera",
+        required=True,
+        type=str,
+        help="ID камеры (например cam_01). Определяет имя файла калибровки.",
     )
-    parser.add_argument("--video", required=True, type=str,
-                        help="Путь к видеофайлу")
-    parser.add_argument("--camera", required=True, type=str,
-                        help="ID камеры (например cam_01). "
-                             "Определяет имя файла калибровки.")
-    parser.add_argument("--model", type=str, default="s",
-                        choices=["n", "s", "m", "l", "x"],
-                        help="Размер модели YOLOv8. По умолчанию: s")
-    parser.add_argument("--conf", type=float, default=0.40,
-                        help="Порог уверенности детекции. По умолчанию: 0.40")
-    parser.add_argument("--imgsz", type=int, default=640,
-                        help="Размер входа модели. По умолчанию: 640")
-    parser.add_argument("--max-frames", type=int, default=0,
-                        help="Максимум кадров (0 = всё видео)")
-    parser.add_argument("--calib-every", type=int, default=30,
-                        help="Пересчитывать эталоны каждые N детекций. По умолчанию: 30")
-    parser.add_argument("--force", action="store_true",
-                        help="Перезаписать существующую калибровку")
+    parser.add_argument(
+        "--model",
+        type=str,
+        default="s",
+        choices=["n", "s", "m", "l", "x"],
+        help="Размер модели YOLOv8. По умолчанию: s",
+    )
+    parser.add_argument(
+        "--conf", type=float, default=0.40, help="Порог уверенности детекции. По умолчанию: 0.40"
+    )
+    parser.add_argument(
+        "--imgsz", type=int, default=640, help="Размер входа модели. По умолчанию: 640"
+    )
+    parser.add_argument("--max-frames", type=int, default=0, help="Максимум кадров (0 = всё видео)")
+    parser.add_argument(
+        "--calib-every",
+        type=int,
+        default=30,
+        help="Пересчитывать эталоны каждые N детекций. По умолчанию: 30",
+    )
+    parser.add_argument("--force", action="store_true", help="Перезаписать существующую калибровку")
 
     args = parser.parse_args()
     path = Path(args.video)
 
     if not path.exists():
-        print(f"[ERROR] Файл не найден: {path}")
+        logger.error(f"Файл не найден: {path}")
         sys.exit(1)
     if path.suffix.lower() not in SUPPORTED_EXTENSIONS:
-        print(f"[ERROR] Неподдерживаемый формат: {path.suffix}")
+        logger.error(f"Неподдерживаемый формат: {path.suffix}")
         sys.exit(1)
 
     calibrate_video(

@@ -1,0 +1,22 @@
+# Нормализация переводов строк: в репозитории всегда LF,
+# в рабочей копии — по настройкам ОС (core.autocrlf).
+* text=auto
+
+*.py      text diff=python
+*.md      text diff=markdown
+*.json    text
+*.toml    text
+*.yml     text
+*.yaml    text
+*.html    text diff=html
+*.bpmn    text
+*.sh      text eol=lf
+Dockerfile text eol=lf
+
+# Бинарные файлы
+*.jpg  binary
+*.jpeg binary
+*.png  binary
+*.webp binary
+*.pt   binary
+*.mp4  binary

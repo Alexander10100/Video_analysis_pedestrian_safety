@@ -1,12 +1,7 @@
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from calibrate_camera import (
-    AutoCalibrator,
+from pedestrian_safety.pipelines.calibrate_camera import (
     CALIBRATIONS_DIR,
     SUPPORTED_EXTENSIONS,
+    AutoCalibrator,
     _progress_bar,
 )
 
@@ -38,7 +33,7 @@ class TestAutoCalibrator:
         cal = AutoCalibrator(frame_height=720)
 
         band = 5
-        for i in range(20):
+        for _i in range(20):
             y2 = int((band + 0.5) * cal.band_h)
             cal.update(100, 100, 200, y2)
 
@@ -58,10 +53,10 @@ class TestAutoCalibrator:
         cal = AutoCalibrator(frame_height=720)
         cal._refs[5] = 200.0
 
-        label, conf = cal.classify(100, 100, 200, 300)
+        label, _conf = cal.classify(100, 100, 200, 300)
         assert label in ("adult", "unknown")
 
-        label, conf = cal.classify(100, 100, 180, 200)
+        label, _conf = cal.classify(100, 100, 180, 200)
         assert label == "child"
 
     def test_to_dict(self):

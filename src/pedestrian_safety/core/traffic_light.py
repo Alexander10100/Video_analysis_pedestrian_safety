@@ -32,14 +32,16 @@ from dataclasses import dataclass, field
 import cv2
 import numpy as np
 
-
 # ── HSV-диапазоны цветов светофора ────────────────────────────────────────────
 # Только горящая лампа: высокая насыщенность + яркость.
 # Тусклые варианты убраны — они создавали ложные срабатывания на корпусе.
 
 _RED_RANGES = [
-    ((0, 120, 80), (15, 255, 255)),   # красный + оранжево-красный (hue 0-15, реальные светофоры дают сдвиг)
-    ((155, 120, 80), (180, 255, 255)),   # пурпурно-красный
+    (
+        (0, 120, 80),
+        (15, 255, 255),
+    ),  # красный + оранжево-красный (hue 0-15, реальные светофоры дают сдвиг)
+    ((155, 120, 80), (180, 255, 255)),  # пурпурно-красный
 ]
 
 _YELLOW_RANGES = [
@@ -48,14 +50,17 @@ _YELLOW_RANGES = [
 ]
 
 _GREEN_RANGES = [
-    ((40, 80, 80), (95, 255, 255)),    # зелёный LED — до hue=95 т.к. реальные светофоры дают hue=86-92
+    (
+        (40, 80, 80),
+        (95, 255, 255),
+    ),  # зелёный LED — до hue=95 т.к. реальные светофоры дают hue=86-92
 ]
 
 # Hue-диапазоны для маскировки «фона» при поиске lamp core.
 # Зелёный корпус (hue 45-75) исключается из поиска пика.
 # Если корпус другого цвета — подберите по своей камере.
 _BODY_HUE_RANGES = [
-    (45, 75),    # зелёный металл корпуса
+    (45, 75),  # зелёный металл корпуса
 ]
 
 # ── Публичные константы состояния ─────────────────────────────────────────────
@@ -87,6 +92,15 @@ _STATE_PRIORITY = {
 }
 
 
+def _is_roi(value) -> bool:
+    """ROI — это последовательность из четырёх чисел ``[x, y, w, h]``."""
+    return (
+        isinstance(value, (list, tuple))
+        and len(value) == 4
+        and all(isinstance(v, (int, float)) for v in value)
+    )
+
+
 def pedestrian_allowed(raw_state: str, light_type: str) -> bool:
     if light_type == LIGHT_TYPE_VEHICLE:
         return raw_state in (STATE_RED, STATE_YELLOW)
@@ -95,10 +109,9 @@ def pedestrian_allowed(raw_state: str, light_type: str) -> bool:
 
 # ── Внутренние утилиты ────────────────────────────────────────────────────────
 
+
 def _mask_area(hsv: np.ndarray, lo: tuple, hi: tuple) -> int:
-    mask = cv2.inRange(hsv,
-                       np.array(lo, dtype=np.uint8),
-                       np.array(hi, dtype=np.uint8))
+    mask = cv2.inRange(hsv, np.array(lo, dtype=np.uint8), np.array(hi, dtype=np.uint8))
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
     mask = cv2.morphologyEx(mask, cv2.MORPH_DILATE, kernel, iterations=1)
@@ -117,8 +130,9 @@ def _enhance_roi(roi: np.ndarray) -> np.ndarray:
     return cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
 
 
-def _find_lamp_core_mask(hsv: np.ndarray,
-                         body_hue_ranges: list[tuple[int, int]]) -> np.ndarray | None:
+def _find_lamp_core_mask(
+    hsv: np.ndarray, body_hue_ranges: list[tuple[int, int]]
+) -> np.ndarray | None:
     """
     Выделить маску «горящего огня» внутри ROI.
 
@@ -144,11 +158,11 @@ def _find_lamp_core_mask(hsv: np.ndarray,
     score_fg[body_mask] = 0.0
 
     peak = float(score_fg.max())
-    if peak < 1000:   # слишком мало сигнала — нет яркой лампы
+    if peak < 1000:  # слишком мало сигнала — нет яркой лампы
         return None
 
     threshold = peak * LAMP_CORE_THRESHOLD
-    lamp_core = (score_fg >= threshold).astype(np.uint8) * 255
+    lamp_core: np.ndarray = (score_fg >= threshold).astype(np.uint8) * 255
 
     # Морфологическое закрытие — убрать шум
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
@@ -183,9 +197,9 @@ def classify_roi(roi: np.ndarray) -> tuple[str, float, dict]:
     # Масштаб
     scale = min(1.0, 120 / max(h, w, 1))
     if scale < 1.0:
-        roi = cv2.resize(roi,
-                         (max(1, int(w * scale)), max(1, int(h * scale))),
-                         interpolation=cv2.INTER_AREA)
+        roi = cv2.resize(
+            roi, (max(1, int(w * scale)), max(1, int(h * scale))), interpolation=cv2.INTER_AREA
+        )
 
     roi_enh = _enhance_roi(roi)
     hsv = cv2.cvtColor(roi_enh, cv2.COLOR_BGR2HSV)
@@ -210,8 +224,10 @@ def classify_roi(roi: np.ndarray) -> tuple[str, float, dict]:
         method = "full_roi"
 
     debug = {
-        "red": red_area, "yellow": yellow_area,
-        "green": green_area, "total": total,
+        "red": red_area,
+        "yellow": yellow_area,
+        "green": green_area,
+        "total": total,
         "method": method,
     }
 
@@ -241,6 +257,7 @@ def _aggregate_states(states: list[str]) -> str:
 
 # ── Хранилище состояния одного ROI ───────────────────────────────────────────
 
+
 @dataclass
 class TrafficLightState:
     light_id: str
@@ -250,19 +267,18 @@ class TrafficLightState:
     _history: deque = field(default_factory=lambda: deque(maxlen=VOTE_WINDOW))
     _frame_cnt: int = 0
 
-    def update(self, raw_state: str, raw_conf: float,
-               light_type: str = LIGHT_TYPE_PEDESTRIAN):
+    def update(self, raw_state: str, raw_conf: float, light_type: str = LIGHT_TYPE_PEDESTRIAN):
         self._history.append(raw_state)
-        counts = {s: self._history.count(s)
-                  for s in (STATE_RED, STATE_GREEN, STATE_YELLOW, STATE_UNKNOWN)}
+        counts = {
+            s: self._history.count(s) for s in (STATE_RED, STATE_GREEN, STATE_YELLOW, STATE_UNKNOWN)
+        }
         best = max(counts, key=counts.__getitem__)
         self.confidence = counts[best] / len(self._history)
         self.state = best
         if pedestrian_allowed(best, light_type):
             self.green_until = time.time() + GREEN_GRACE_SECONDS
 
-    def is_pedestrian_allowed_or_grace(self,
-                                       light_type: str = LIGHT_TYPE_PEDESTRIAN) -> bool:
+    def is_pedestrian_allowed_or_grace(self, light_type: str = LIGHT_TYPE_PEDESTRIAN) -> bool:
         if pedestrian_allowed(self.state, light_type):
             return True
         return time.time() < self.green_until
@@ -270,12 +286,19 @@ class TrafficLightState:
 
 # ── Агрегированное состояние зоны ─────────────────────────────────────────────
 
-class AggregatedTLState:
-    __slots__ = ("zone_id", "state", "confidence", "light_type",
-                 "green_grace", "green_until", "per_roi")
 
-    def __init__(self, zone_id, state, confidence, light_type,
-                 green_grace, green_until, per_roi):
+class AggregatedTLState:
+    __slots__ = (
+        "confidence",
+        "green_grace",
+        "green_until",
+        "light_type",
+        "per_roi",
+        "state",
+        "zone_id",
+    )
+
+    def __init__(self, zone_id, state, confidence, light_type, green_grace, green_until, per_roi):
         self.zone_id = zone_id
         self.state = state
         self.confidence = confidence
@@ -289,6 +312,7 @@ class AggregatedTLState:
 
 
 # ── Главный анализатор ────────────────────────────────────────────────────────
+
 
 class TrafficLightAnalyzer:
     """
@@ -307,8 +331,7 @@ class TrafficLightAnalyzer:
         existing = self._states.get(zone_id, [])
         if len(existing) != n_rois:
             self._states[zone_id] = [
-                TrafficLightState(light_id=f"{zone_id}__roi{i}")
-                for i in range(n_rois)
+                TrafficLightState(light_id=f"{zone_id}__roi{i}") for i in range(n_rois)
             ]
         return self._states[zone_id]
 
@@ -316,18 +339,13 @@ class TrafficLightAnalyzer:
     def _parse_rois(raw) -> list[list]:
         if not raw:
             return []
-        if isinstance(raw, (list, tuple)) and len(raw) == 4:
-            if all(isinstance(v, (int, float)) for v in raw):
-                return [list(raw)]
-        result = []
-        for item in raw:
-            if isinstance(item, (list, tuple)) and len(item) == 4:
-                if all(isinstance(v, (int, float)) for v in item):
-                    result.append(list(item))
-        return result
+        if _is_roi(raw):
+            return [list(raw)]
+        return [list(item) for item in raw if _is_roi(item)]
 
-    def process_frame(self, frame: np.ndarray,
-                      crosswalk_zones: list) -> dict[str, AggregatedTLState]:
+    def process_frame(
+        self, frame: np.ndarray, crosswalk_zones: list
+    ) -> dict[str, AggregatedTLState]:
         fh, fw = frame.shape[:2]
 
         for zone in crosswalk_zones:
@@ -342,7 +360,7 @@ class TrafficLightAnalyzer:
             self._zone_types[zone.id] = light_type
             states_list = self._get_or_create(zone.id, len(rois))
 
-            for idx, (roi_def, st) in enumerate(zip(rois, states_list)):
+            for _idx, (roi_def, st) in enumerate(zip(rois, states_list, strict=False)):
                 st._frame_cnt += 1
                 if st._frame_cnt % self._cache_frames != 0:
                     continue
@@ -377,10 +395,7 @@ class TrafficLightAnalyzer:
                 light_type=light_type,
                 green_grace=any_allowed,
                 green_until=max((s.green_until for s in states), default=0.0),
-                per_roi=[
-                    {"state": s.state, "confidence": round(s.confidence, 2)}
-                    for s in states
-                ],
+                per_roi=[{"state": s.state, "confidence": round(s.confidence, 2)} for s in states],
             )
         return result
 

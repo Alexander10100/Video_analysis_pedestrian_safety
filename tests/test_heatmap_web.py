@@ -1,34 +1,29 @@
-import sys
-from pathlib import Path
 import json
 from datetime import datetime
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from heatmap_web import (
-    load_json,
-    save_json,
-    load_positions_config,
-    save_positions_config,
-    discover_report_files,
-    extract_report_summary,
-    choose_latest_report,
-    collect_reports_by_camera,
-    collect_camera_ids,
-    violation_sort_key,
-    build_violation_stats,
-    camera_violation_payload,
-    zones_for_camera,
-    background_url,
+from pedestrian_safety.services.heatmap_web import (
     ALLOWED_IMAGE_EXTS,
     VIDEO_EXTS,
+    background_url,
+    build_violation_stats,
+    camera_violation_payload,
+    choose_latest_report,
+    collect_camera_ids,
+    collect_reports_by_camera,
+    discover_report_files,
+    extract_report_summary,
+    load_json,
+    load_positions_config,
+    save_json,
+    save_positions_config,
+    violation_sort_key,
+    zones_for_camera,
 )
 
 
 class TestHeatmapWeb:
-
     def test_load_json_existing(self, tmp_path):
         """Загрузка существующего JSON"""
         file_path = tmp_path / "test.json"
@@ -56,7 +51,8 @@ class TestHeatmapWeb:
 
     def test_load_positions_config_default(self, tmp_path):
         """Загрузка конфигурации позиций по умолчанию"""
-        import heatmap_web
+        from pedestrian_safety.services import heatmap_web
+
         original = heatmap_web.POSITIONS_FILE
         heatmap_web.POSITIONS_FILE = tmp_path / "none.json"
 
@@ -70,7 +66,8 @@ class TestHeatmapWeb:
 
     def test_save_positions_config(self, tmp_path):
         """Сохранение конфигурации позиций"""
-        import heatmap_web
+        from pedestrian_safety.services import heatmap_web
+
         original = heatmap_web.POSITIONS_FILE
         heatmap_web.POSITIONS_FILE = tmp_path / "positions.json"
 
@@ -90,7 +87,8 @@ class TestHeatmapWeb:
 
     def test_discover_report_files_no_reports(self, tmp_path):
         """Поиск отчётов (нет отчётов)"""
-        import heatmap_web
+        from pedestrian_safety.services import heatmap_web
+
         original = heatmap_web.REPORT_DIRS
         heatmap_web.REPORT_DIRS = [tmp_path / "reports"]
 
@@ -102,7 +100,8 @@ class TestHeatmapWeb:
 
     def test_discover_report_files_with_reports(self, tmp_path):
         """Поиск отчётов (есть отчёты)"""
-        import heatmap_web
+        from pedestrian_safety.services import heatmap_web
+
         original = heatmap_web.REPORT_DIRS
         heatmap_web.REPORT_DIRS = [tmp_path / "reports"]
 
@@ -121,7 +120,8 @@ class TestHeatmapWeb:
 
     def test_extract_report_summary_valid(self, tmp_path):
         """Извлечение сводки из отчёта"""
-        import heatmap_web
+        from pedestrian_safety.services import heatmap_web
+
         original_base = heatmap_web.BASE_DIR
 
         heatmap_web.BASE_DIR = tmp_path
@@ -175,7 +175,8 @@ class TestHeatmapWeb:
 
     def test_collect_reports_by_camera(self, tmp_path):
         """Сбор отчётов по камерам"""
-        import heatmap_web
+        from pedestrian_safety.services import heatmap_web
+
         original_base = heatmap_web.BASE_DIR
         original_dirs = heatmap_web.REPORT_DIRS
 
@@ -205,7 +206,8 @@ class TestHeatmapWeb:
 
     def test_collect_camera_ids(self, tmp_path):
         """Сбор ID камер"""
-        import heatmap_web
+        from pedestrian_safety.services import heatmap_web
+
         original_video = heatmap_web.VIDEO_ROOT
         original_zones = heatmap_web.ZONES_FILE
         original_positions = heatmap_web.POSITIONS_FILE
@@ -239,10 +241,7 @@ class TestHeatmapWeb:
         violation1 = {"timestamp": "2026-01-01T00:00:00"}
         violation2 = {"timestamp": "2026-01-02T00:00:00"}
 
-        sorted_violations = sorted(
-            [violation1, violation2],
-            key=violation_sort_key
-        )
+        sorted_violations = sorted([violation1, violation2], key=violation_sort_key)
         assert sorted_violations[0]["timestamp"] == "2026-01-01T00:00:00"
 
     def test_violation_sort_key_invalid(self):
@@ -275,7 +274,8 @@ class TestHeatmapWeb:
 
     def test_camera_violation_payload(self, tmp_path):
         """Получение данных о нарушениях для камеры"""
-        import heatmap_web
+        from pedestrian_safety.services import heatmap_web
+
         original_base = heatmap_web.BASE_DIR
         original_dirs = heatmap_web.REPORT_DIRS
 
@@ -307,7 +307,8 @@ class TestHeatmapWeb:
 
     def test_zones_for_camera(self, tmp_path):
         """Получение зон для камеры"""
-        import heatmap_web
+        from pedestrian_safety.services import heatmap_web
+
         original = heatmap_web.ZONES_FILE
         heatmap_web.ZONES_FILE = tmp_path / "zones.json"
 
@@ -332,7 +333,8 @@ class TestHeatmapWeb:
 
     def test_zones_for_camera_empty(self, tmp_path):
         """Получение зон для камеры (нет зон)"""
-        import heatmap_web
+        from pedestrian_safety.services import heatmap_web
+
         original = heatmap_web.ZONES_FILE
         heatmap_web.ZONES_FILE = tmp_path / "zones.json"
 

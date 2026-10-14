@@ -1,11 +1,8 @@
 # tests/test_zone_manager.py
-import sys
-from pathlib import Path
 import tempfile
+from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from zone_manager import ZoneManager, RoadZone
+from pedestrian_safety.core.zone_manager import RoadZone, ZoneManager
 
 
 class TestRoadZone:
@@ -18,7 +15,7 @@ class TestRoadZone:
             label="Test Zone",
             polygon=[[0.1, 0.1], [0.2, 0.1], [0.2, 0.2], [0.1, 0.2]],
             type="road",
-            color=[0, 80, 220]
+            color=[0, 80, 220],
         )
         assert zone.id == "test_id"
         assert zone.label == "Test Zone"
@@ -34,7 +31,7 @@ class TestRoadZone:
             type="crosswalk",
             color=[220, 160, 0],
             has_light=True,
-            light_type="pedestrian"
+            light_type="pedestrian",
         )
         data = zone.to_dict()
         assert data["id"] == "test_id"
@@ -49,7 +46,7 @@ class TestRoadZone:
             label="Test",
             polygon=[[0.1, 0.1], [0.2, 0.1], [0.2, 0.2], [0.1, 0.2]],
             type="road",
-            color=[0, 80, 220]
+            color=[0, 80, 220],
         )
         assert zone.contains_point(0.15, 0.15) is True
         assert zone.contains_point(0.5, 0.5) is False
@@ -77,9 +74,7 @@ class TestZoneManager:
 
         mgr = ZoneManager(filepath=temp_file)
         zone = mgr.add_zone(
-            label="Test Zone",
-            polygon=[[0.1, 0.1], [0.2, 0.1], [0.2, 0.2]],
-            zone_type="road"
+            label="Test Zone", polygon=[[0.1, 0.1], [0.2, 0.1], [0.2, 0.2]], zone_type="road"
         )
         assert zone.id in mgr._zones
         assert len(mgr._zones) == 1

@@ -1,0 +1,106 @@
+[project]
+name = "pedestrian-safety"
+version = "0.2.0"
+description = "Видеоаналитика безопасности пешеходов: детекция нарушений ПДД, классификация взрослый/ребёнок, тепловая карта."
+authors = [{ name = "Alexander10100" }, { name = "nikitasasniy" }]
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10,<3.14"
+dependencies = [
+    "flask (>=3.1,<4.0)",
+    "numpy (>=2.0,<3.0)",
+    "opencv-python (>=4.10,<5.0)",
+    "pillow (>=11.0,<13.0)",
+    "ultralytics (>=8.3,<9.0)",  # тянет torch/torchvision
+]
+
+[project.scripts]
+psafety-stream     = "pedestrian_safety.services.stream_detect:main"
+psafety-heatmap    = "pedestrian_safety.services.heatmap_web:main"
+psafety-camera-map = "pedestrian_safety.services.camera_map_web:main"
+psafety-offline    = "pedestrian_safety.pipelines.offline_detect:main"
+psafety-batch      = "pedestrian_safety.pipelines.batch_folder_offline:main"
+psafety-report     = "pedestrian_safety.pipelines.report_generator:main"
+psafety-calibrate  = "pedestrian_safety.pipelines.calibrate_camera:main"
+
+[project.urls]
+repository = "https://github.com/Alexander10100/Video_analysis_pedestrian_safety"
+
+# ── Poetry ─────────────────────────────────────────────────────────────────────
+[tool.poetry]
+packages = [{ include = "pedestrian_safety", from = "src" }]
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=8.3"
+pytest-cov = ">=6.0"
+ruff = "^0.17"
+mypy = ">=1.15"
+pre-commit = ">=4.0"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+# ── Ruff: линтер + форматтер ───────────────────────────────────────────────────
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+extend-exclude = ["ffmpeg"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # isort
+    "B",        # flake8-bugbear
+    "UP",       # pyupgrade
+    "SIM",      # flake8-simplify
+    "N",        # pep8-naming
+    "C4",       # flake8-comprehensions
+    "RUF",      # ruff-specific
+]
+ignore = [
+    "RUF001", "RUF002", "RUF003",  # кириллица в строках/комментариях — это нормально
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["N802", "N806"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["pedestrian_safety"]
+
+[tool.ruff.format]
+quote-style = "double"
+line-ending = "auto"
+
+# ── Mypy ───────────────────────────────────────────────────────────────────────
+[tool.mypy]
+python_version = "3.10"
+files = ["src"]
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+check_untyped_defs = true
+no_implicit_optional = true
+
+# TODO(tech-debt): process_video() в offline_detect.py — ~600 строк с двумя
+# почти одинаковыми ветками (batched / потоковая). `annotated` намеренно
+# Optional (когда --no-annotated-video), `cap` обнуляется после preload.
+# До декомпозиции эти классы ошибок для модуля отключены, остальное проверяется.
+[[tool.mypy.overrides]]
+module = "pedestrian_safety.pipelines.offline_detect"
+disable_error_code = ["arg-type", "no-redef", "assignment"]
+
+# ── Pytest / coverage ──────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+
+[tool.coverage.run]
+source = ["pedestrian_safety"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true

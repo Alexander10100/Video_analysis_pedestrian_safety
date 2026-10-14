@@ -1,4 +1,5 @@
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -6,16 +7,18 @@ import cv2
 from flask import Flask, jsonify, render_template, request, send_from_directory
 from werkzeug.utils import secure_filename
 
+from pedestrian_safety.config import IMAGE_EXTS, VIDEO_EXTS, get_settings
+from pedestrian_safety.logging_config import setup_logging
 
-BASE_DIR = Path(__file__).resolve().parent
-REPORT_DIRS = [BASE_DIR / "reports", BASE_DIR / "reports_batches"]
-POSITIONS_FILE = BASE_DIR / "heatmap_camera_positions.json"
-ASSETS_DIR = BASE_DIR / "heatmap_assets"
+_settings = get_settings()
+BASE_DIR = _settings.data_dir
+REPORT_DIRS = [_settings.reports_dir, _settings.reports_batches_dir]
+POSITIONS_FILE = _settings.heatmap_positions_file
+ASSETS_DIR = _settings.heatmap_assets_dir
 BACKGROUND_DIR = ASSETS_DIR / "backgrounds"
-ZONES_FILE = BASE_DIR / "zones.json"
-VIDEO_ROOT = BASE_DIR / "video"
-ALLOWED_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
-VIDEO_EXTS = {".mp4", ".avi", ".mov", ".mkv", ".ts", ".webm", ".m4v"}
+ZONES_FILE = _settings.zones_file
+VIDEO_ROOT = _settings.video_root
+ALLOWED_IMAGE_EXTS = IMAGE_EXTS
 
 
 def load_json(path: Path, default):
@@ -64,7 +67,7 @@ def save_positions_config(config):
 
 
 def discover_report_files():
-    report_files = []
+    report_files: list[Path] = []
     for report_dir in REPORT_DIRS:
         if not report_dir.exists():
             continue
@@ -140,7 +143,7 @@ def choose_latest_report(summaries):
 
 
 def collect_reports_by_camera():
-    grouped = {}
+    grouped: dict[str, list[dict]] = {}
     for report_file in discover_report_files():
         summary = extract_report_summary(report_file)
         if not summary:
@@ -211,10 +214,12 @@ def camera_violation_payload(camera_id: str):
     for violation in sorted(raw_violations, key=violation_sort_key):
         if not isinstance(violation, dict):
             continue
-        violations.append({
-            "timestamp": violation.get("timestamp"),
-            "violation_type": violation.get("violation_type"),
-        })
+        violations.append(
+            {
+                "timestamp": violation.get("timestamp"),
+                "violation_type": violation.get("violation_type"),
+            }
+        )
 
     return {
         "stats": build_violation_stats(report),
@@ -234,10 +239,7 @@ def resolve_video_folder(camera_id: str) -> Path | None:
 def list_videos(folder: Path | None):
     if folder is None or not folder.exists():
         return []
-    return sorted(
-        p for p in folder.iterdir()
-        if p.is_file() and p.suffix.lower() in VIDEO_EXTS
-    )
+    return sorted(p for p in folder.iterdir() if p.is_file() and p.suffix.lower() in VIDEO_EXTS)
 
 
 def first_video_for_camera(camera_id: str) -> Path | None:
@@ -306,9 +308,9 @@ def build_heatmap_points():
         }
         if isinstance(pos, dict):
             try:
-                point["x"] = float(pos.get("x"))
-                point["y"] = float(pos.get("y"))
-            except Exception:
+                point["x"] = float(pos["x"])
+                point["y"] = float(pos["y"])
+            except (KeyError, TypeError, ValueError):
                 point["x"] = None
                 point["y"] = None
         points.append(point)
@@ -330,12 +332,14 @@ def create_app():
     @app.route("/api/state")
     def api_state():
         config = load_positions_config()
-        return jsonify({
-            "background_url": background_url(config),
-            "config": config,
-            "camera_ids": collect_camera_ids(),
-            "reports": collect_reports_by_camera(),
-        })
+        return jsonify(
+            {
+                "background_url": background_url(config),
+                "config": config,
+                "camera_ids": collect_camera_ids(),
+                "reports": collect_reports_by_camera(),
+            }
+        )
 
     @app.route("/camera/<camera_id>")
     def camera_preview(camera_id: str):
@@ -350,14 +354,16 @@ def create_app():
         video_path = first_video_for_camera(camera_id)
         zones = zones_for_camera(camera_id)
         violations = camera_violation_payload(camera_id)
-        return jsonify({
-            "ok": True,
-            "camera_id": camera_id,
-            "has_frame": video_path is not None,
-            "frame_url": f"/camera/{camera_id}/frame",
-            "zones": zones,
-            "violations": violations,
-        })
+        return jsonify(
+            {
+                "ok": True,
+                "camera_id": camera_id,
+                "has_frame": video_path is not None,
+                "frame_url": f"/camera/{camera_id}/frame",
+                "zones": zones,
+                "violations": violations,
+            }
+        )
 
     @app.route("/camera/<camera_id>/frame")
     def camera_frame(camera_id: str):
@@ -399,7 +405,9 @@ def create_app():
         config["positions"] = cleaned
         config["ui"] = {"positions_locked": positions_locked}
         save_positions_config(config)
-        return jsonify({"ok": True, "positions_saved": len(cleaned), "positions_locked": positions_locked})
+        return jsonify(
+            {"ok": True, "positions_saved": len(cleaned), "positions_locked": positions_locked}
+        )
 
     @app.route("/api/upload_background", methods=["POST"])
     def api_upload_background():
@@ -423,11 +431,13 @@ def create_app():
             "updated_at": datetime.now().isoformat(timespec="seconds"),
         }
         save_positions_config(config)
-        return jsonify({
-            "ok": True,
-            "background_url": background_url(config),
-            "background": config["background"],
-        })
+        return jsonify(
+            {
+                "ok": True,
+                "background_url": background_url(config),
+                "background": config["background"],
+            }
+        )
 
     @app.route("/backgrounds/<path:filename>")
     def serve_background(filename):
@@ -436,6 +446,13 @@ def create_app():
     return app
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Точка входа: ``psafety-heatmap``."""
+    setup_logging()
+    port = int(os.environ.get("PORT", "5055"))
     app = create_app()
-    app.run(host="0.0.0.0", port=5055, debug=False)
+    app.run(host="0.0.0.0", port=port, debug=False)
+
+
+if __name__ == "__main__":
+    main()

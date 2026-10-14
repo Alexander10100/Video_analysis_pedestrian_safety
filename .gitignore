@@ -1,0 +1,44 @@
+# ── Виртуальное окружение (создаётся `poetry install`, в git не хранится) ──
+.venv/
+venv/
+env/
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# ── Инструменты качества кода ──
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# ── Веса моделей (скачиваются автоматически) ──
+*.pt
+
+# ── Данные и артефакты запуска ──
+video/
+annotated_batches/
+reports/
+reports_batches/
+violations_log.jsonl
+camera_points.json
+report*.json
+
+# ── Локальные секреты ──
+.env
+
+# ── FFmpeg (Windows-бинарник) ──
+ffmpeg/
+
+# ── IDE / ОС ──
+.idea/
+.vscode/
+.cursor/
+.DS_Store
+Thumbs.db

@@ -1,9 +1,4 @@
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from age_classifier import AgeClassifier, AgeTracker, BboxEMA
+from pedestrian_safety.core.age_classifier import AgeClassifier, AgeTracker, BboxEMA
 
 
 class TestAgeClassifier:
@@ -22,14 +17,14 @@ class TestAgeClassifier:
         """Классификация с калибровкой"""
         clf = AgeClassifier(frame_height=720)
         clf._calibrated = True
-        clf._refs = {5: 180.0}  
+        clf._refs = {5: 180.0}
 
-        # Взрослый 
+        # Взрослый
         label, conf = clf.classify(100, 300, 200, 500)
         assert label == "adult"
         assert conf > 0.5
 
-        # Ребёнок 
+        # Ребёнок
         label, conf = clf.classify(100, 400, 180, 500)
         assert label == "child"
         assert conf > 0.5
@@ -40,8 +35,8 @@ class TestAgeClassifier:
         clf._calibrated = True
         clf._refs = {3: 170.0, 7: 190.0}
 
-        # Зона 5 
-        label, conf = clf.classify(100, 400, 200, 520)  # y2=520 -> зона ~7
+        # Зона 5
+        label, _conf = clf.classify(100, 400, 200, 520)  # y2=520 -> зона ~7
         assert label in ("adult", "child")
 
 
@@ -54,7 +49,7 @@ class TestAgeTracker:
 
         label, conf = tracker.update(1, "adult", 0.9)
         assert label == "adult"
-        assert conf == 0.45  
+        assert conf == 0.45
 
     def test_adult_to_child_flip(self):
         """Переход adult→child при достаточном количестве голосов"""
@@ -64,9 +59,9 @@ class TestAgeTracker:
         for _ in range(3):
             tracker.update(1, "adult", 0.9)
 
-        # 3 кадра child 
+        # 3 кадра child
         for _ in range(3):
-            label, conf = tracker.update(1, "child", 0.9)
+            label, _conf = tracker.update(1, "child", 0.9)
 
         assert label == "child"
 
@@ -79,7 +74,7 @@ class TestAgeTracker:
 
         assert len(tracker) == 2
 
-        tracker.evict({1})  
+        tracker.evict({1})
         assert len(tracker) == 1
 
     def test_reset(self):
@@ -112,7 +107,6 @@ class TestBboxEMA:
         # Второй кадр с резким скачком
         x1, y1, x2, y2 = ema.smooth(1, 150, 250, 350, 450)
 
-        
         assert x1 == 125
         assert y1 == 225
         assert x2 == 325
