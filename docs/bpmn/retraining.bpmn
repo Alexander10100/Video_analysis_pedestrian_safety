@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_retraining" targetNamespace="http://bpmn.io/schema/bpmn" exporter="bpmn-js (https://demo.bpmn.io)" exporterVersion="17.11.1">
+<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_retraining" targetNamespace="http://bpmn.io/schema/bpmn" exporter="bpmn-js (https://demo.bpmn.io)" exporterVersion="18.31.0">
   <bpmn:error id="Error_deploy" name="DeployFailed" errorCode="DEPLOY_FAILED" />
   <bpmn:collaboration id="Collab_retraining">
     <bpmn:participant id="Pool_mlops" name="Retraining-цикл модели классификации взрослый/ребёнок" processRef="Process_retraining" />
@@ -56,7 +56,7 @@
       <bpmn:incoming>F1</bpmn:incoming>
       <bpmn:outgoing>F2</bpmn:outgoing>
     </bpmn:serviceTask>
-    <bpmn:exclusiveGateway id="Gw_drift" name="Триггер по дрифту: PSI &gt; 0.2?">
+    <bpmn:exclusiveGateway id="Gw_drift" name="Триггер по дрифту: PSI &#62; 0.2?">
       <bpmn:incoming>F2</bpmn:incoming>
       <bpmn:outgoing>F3</bpmn:outgoing>
       <bpmn:outgoing>F4</bpmn:outgoing>
@@ -98,7 +98,7 @@
       <bpmn:incoming>F12</bpmn:incoming>
       <bpmn:outgoing>F13</bpmn:outgoing>
     </bpmn:businessRuleTask>
-    <bpmn:exclusiveGateway id="Gw_better" name="AUC победителя &gt; AUC прод-модели?">
+    <bpmn:exclusiveGateway id="Gw_better" name="AUC победителя &#62; AUC прод-модели?">
       <bpmn:incoming>F13</bpmn:incoming>
       <bpmn:outgoing>F14</bpmn:outgoing>
       <bpmn:outgoing>F16</bpmn:outgoing>
@@ -163,7 +163,7 @@
     <bpmn:endEvent id="End_done" name="Модель обновлена">
       <bpmn:incoming>F24</bpmn:incoming>
     </bpmn:endEvent>
-    <bpmn:boundaryEvent id="Boundary_sla" name="48 ч без решения" attachedToRef="User_validate" cancelActivity="false">
+    <bpmn:boundaryEvent id="Boundary_sla" name="48 ч без решения" cancelActivity="false" attachedToRef="User_validate">
       <bpmn:outgoing>F25</bpmn:outgoing>
       <bpmn:timerEventDefinition id="Boundary_sla_def">
         <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT48H</bpmn:timeDuration>
@@ -215,14 +215,14 @@
     <bpmn:sequenceFlow id="F28" sourceRef="Task_rollback" targetRef="Send_alert" />
     <bpmn:sequenceFlow id="F29" sourceRef="Send_alert" targetRef="End_rollback" />
     <bpmn:textAnnotation id="Note_auction">
-      <bpmn:text>Аукцион: обе модели оцениваются на одном hold-out; побеждает наибольший ROC-AUC. В прод — только если победитель лучше текущей модели (champion/challenger).</bpmn:text>
+      <bpmn:text>Аукцион: обе модели оцениваются на одном hold-out; побеждает наибольший ROC-AUC. В прод только если победитель лучше текущей модели.</bpmn:text>
     </bpmn:textAnnotation>
     <bpmn:association id="Note_auction_assoc" sourceRef="Note_auction" targetRef="Task_auction" />
     <bpmn:textAnnotation id="Note_hitl">
-      <bpmn:text>Human-in-the-loop: без одобрения инженера модель не попадает в прод. Проверяются метрики, fairness (дети/взрослые, день/ночь) и Model Card.</bpmn:text>
+      <bpmn:text>Human-in-the-loop: без одобрения инженера модель не попадает в прод. Проверяются метрики, дети/взрослые, день/ночь.</bpmn:text>
     </bpmn:textAnnotation>
     <bpmn:textAnnotation id="Note_drift">
-      <bpmn:text>Дрифт: PSI распределения высоты bbox и доли unknown по сравнению с эталонной неделей. Порог 0.2 — стандарт для PSI.</bpmn:text>
+      <bpmn:text>Дрифт: PSI распределения высоты bbox и доли unknown по сравнению с эталонной неделей.</bpmn:text>
     </bpmn:textAnnotation>
   </bpmn:process>
   <bpmndi:BPMNDiagram id="Diagram_1">
@@ -230,17 +230,17 @@
       <bpmndi:BPMNShape id="Pool_mlops_di" bpmnElement="Pool_mlops" isHorizontal="true">
         <dc:Bounds x="160" y="80" width="2440" height="880" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Lane_monitoring_di" bpmnElement="Lane_monitoring" isHorizontal="true">
-        <dc:Bounds x="190" y="80" width="2410" height="220" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Lane_pipeline_di" bpmnElement="Lane_pipeline" isHorizontal="true">
-        <dc:Bounds x="190" y="300" width="2410" height="260" />
+      <bpmndi:BPMNShape id="Lane_deploy_di" bpmnElement="Lane_deploy" isHorizontal="true">
+        <dc:Bounds x="190" y="760" width="2410" height="200" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Lane_human_di" bpmnElement="Lane_human" isHorizontal="true">
         <dc:Bounds x="190" y="560" width="2410" height="200" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Lane_deploy_di" bpmnElement="Lane_deploy" isHorizontal="true">
-        <dc:Bounds x="190" y="760" width="2410" height="200" />
+      <bpmndi:BPMNShape id="Lane_pipeline_di" bpmnElement="Lane_pipeline" isHorizontal="true">
+        <dc:Bounds x="190" y="300" width="2410" height="260" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_monitoring_di" bpmnElement="Lane_monitoring" isHorizontal="true">
+        <dc:Bounds x="190" y="80" width="2410" height="220" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Start_daily_di" bpmnElement="Start_daily">
         <dc:Bounds x="232" y="182" width="36" height="36" />
@@ -277,6 +277,7 @@
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Task_trainB_di" bpmnElement="Task_trainB">
         <dc:Bounds x="940" y="455" width="140" height="80" />
+        <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Gw_join_di" bpmnElement="Gw_join">
         <dc:Bounds x="1125" y="405" width="50" height="50" />
@@ -359,11 +360,17 @@
           <dc:Bounds x="2185" y="884" width="90" height="40" />
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Boundary_sla_di" bpmnElement="Boundary_sla">
-        <dc:Bounds x="1557" y="682" width="36" height="36" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="1595" y="718" width="100" height="27" />
-        </bpmndi:BPMNLabel>
+      <bpmndi:BPMNShape id="Note_auction_di" bpmnElement="Note_auction">
+        <dc:Bounds x="1370" y="105" width="302.3229016382658" height="57" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Note_hitl_di" bpmnElement="Note_hitl">
+        <dc:Bounds x="2270" y="580" width="301.0982909351833" height="57" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Note_drift_di" bpmnElement="Note_drift">
+        <dc:Bounds x="860" y="105" width="302.3229016382658" height="43" />
+        <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Boundary_deploy_err_di" bpmnElement="Boundary_deploy_err">
         <dc:Bounds x="1717" y="882" width="36" height="36" />
@@ -371,18 +378,11 @@
           <dc:Bounds x="1755" y="918" width="100" height="27" />
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Note_auction_di" bpmnElement="Note_auction">
-        <dc:Bounds x="1370" y="105" width="300" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNEdge id="Note_auction_assoc_di" bpmnElement="Note_auction_assoc">
-        <di:waypoint x="1450" y="185" />
-        <di:waypoint x="1450" y="390" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNShape id="Note_hitl_di" bpmnElement="Note_hitl">
-        <dc:Bounds x="2270" y="580" width="300" height="90" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Note_drift_di" bpmnElement="Note_drift">
-        <dc:Bounds x="860" y="105" width="300" height="80" />
+      <bpmndi:BPMNShape id="Boundary_sla_di" bpmnElement="Boundary_sla">
+        <dc:Bounds x="1557" y="682" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1595" y="718" width="100" height="27" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="F1_di" bpmnElement="F1">
         <di:waypoint x="268" y="200" />
@@ -525,6 +525,10 @@
       <bpmndi:BPMNEdge id="F29_di" bpmnElement="F29">
         <di:waypoint x="1360" y="860" />
         <di:waypoint x="1308" y="860" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Note_auction_assoc_di" bpmnElement="Note_auction_assoc">
+        <di:waypoint x="1450" y="162" />
+        <di:waypoint x="1450" y="390" />
       </bpmndi:BPMNEdge>
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>
