@@ -4,7 +4,7 @@
   <bpmn:collaboration id="Collab_operation">
     <bpmn:participant id="Pool_operation" name="Эксплуатация модели видеоаналитики пешеходов" processRef="Process_operation" />
     <bpmn:participant id="Pool_customer" name="Дорожная служба (заказчик отчётов)" />
-    <bpmn:messageFlow id="Msg_report" name="Еженедельный отчёт" sourceRef="Send_report" targetRef="Pool_customer" />
+    <bpmn:messageFlow id="Msg_report" name="Отчёт и рекомендации" sourceRef="Send_report" targetRef="Pool_customer" />
   </bpmn:collaboration>
   <bpmn:process id="Process_operation" name="Эксплуатация модели" isExecutable="false">
     <bpmn:laneSet id="LaneSet_op">
@@ -19,14 +19,15 @@
       <bpmn:lane id="Lane_system" name="Система видеоаналитики (автоматически)">
         <bpmn:flowNodeRef>Task_calib</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>Task_report</bpmn:flowNodeRef>
-        <bpmn:flowNodeRef>Call_retraining</bpmn:flowNodeRef>
-        <bpmn:flowNodeRef>End_retrain</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Send_alert</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>End_ml</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>End_decommission</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>Sub_monitoring</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>Boundary_lost</bpmn:flowNodeRef>
-        <bpmn:flowNodeRef>Boundary_weekly</bpmn:flowNodeRef>
       </bpmn:lane>
       <bpmn:lane id="Lane_analyst" name="Аналитик (human-in-the-loop)">
+        <bpmn:flowNodeRef>Start_analyst</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>User_open</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>User_review</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>User_recommend</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>Send_report</bpmn:flowNodeRef>
@@ -64,39 +65,46 @@
       <bpmn:incoming>F2</bpmn:incoming>
       <bpmn:outgoing>F3</bpmn:outgoing>
     </bpmn:serviceTask>
-    <bpmn:serviceTask id="Task_report" name="Сформировать отчёт и тепловую карту за неделю">
-      <bpmn:incoming>F11</bpmn:incoming>
-      <bpmn:outgoing>F12</bpmn:outgoing>
+    <bpmn:serviceTask id="Task_report" name="Построить отчёт по журналу нарушений (по запросу)">
+      <bpmn:incoming>F12</bpmn:incoming>
+      <bpmn:outgoing>F13</bpmn:outgoing>
     </bpmn:serviceTask>
-    <bpmn:callActivity id="Call_retraining" name="Retraining-цикл модели (retraining.bpmn)" calledElement="Process_retraining">
-      <bpmn:incoming>F17</bpmn:incoming>
-      <bpmn:outgoing>F18</bpmn:outgoing>
-    </bpmn:callActivity>
-    <bpmn:endEvent id="End_retrain" name="Передано на переобучение">
+    <bpmn:sendTask id="Send_alert" name="Telegram: точность ниже цели, нужна проверка ML-инженером">
       <bpmn:incoming>F18</bpmn:incoming>
+      <bpmn:outgoing>F19</bpmn:outgoing>
+    </bpmn:sendTask>
+    <bpmn:endEvent id="End_ml" name="Передано ML-инженеру">
+      <bpmn:incoming>F19</bpmn:incoming>
     </bpmn:endEvent>
     <bpmn:endEvent id="End_decommission" name="Камера выведена из эксплуатации">
       <bpmn:incoming>F10</bpmn:incoming>
     </bpmn:endEvent>
-    <bpmn:userTask id="User_review" name="Проверить выборку нарушений по видео, посчитать точность">
-      <bpmn:incoming>F12</bpmn:incoming>
-      <bpmn:outgoing>F13</bpmn:outgoing>
+    <bpmn:startEvent id="Start_analyst" name="Нужно проверить ситуацию (≈ раз в неделю)">
+      <bpmn:outgoing>F11</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="User_open" name="Открыть отчёт и тепловую карту за период">
+      <bpmn:incoming>F11</bpmn:incoming>
+      <bpmn:outgoing>F12</bpmn:outgoing>
     </bpmn:userTask>
-    <bpmn:userTask id="User_recommend" name="Подготовить рекомендации: где нужен переход, светофор">
+    <bpmn:userTask id="User_review" name="Проверить выборку нарушений по видео, посчитать точность">
       <bpmn:incoming>F13</bpmn:incoming>
       <bpmn:outgoing>F14</bpmn:outgoing>
     </bpmn:userTask>
-    <bpmn:sendTask id="Send_report" name="Отправить отчёт и тепловую карту">
+    <bpmn:userTask id="User_recommend" name="Подготовить рекомендации: где нужен переход, светофор">
       <bpmn:incoming>F14</bpmn:incoming>
       <bpmn:outgoing>F15</bpmn:outgoing>
-    </bpmn:sendTask>
-    <bpmn:exclusiveGateway id="Gw_precision" name="Точность нарушений ≥ 0.90?">
+    </bpmn:userTask>
+    <bpmn:sendTask id="Send_report" name="Отправить отчёт и тепловую карту">
       <bpmn:incoming>F15</bpmn:incoming>
       <bpmn:outgoing>F16</bpmn:outgoing>
-      <bpmn:outgoing>F17</bpmn:outgoing>
-    </bpmn:exclusiveGateway>
-    <bpmn:endEvent id="End_ok" name="Неделя закрыта">
+    </bpmn:sendTask>
+    <bpmn:exclusiveGateway id="Gw_precision" name="Точность нарушений ≥ 0.90?">
       <bpmn:incoming>F16</bpmn:incoming>
+      <bpmn:outgoing>F17</bpmn:outgoing>
+      <bpmn:outgoing>F18</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:endEvent id="End_ok" name="Проверка завершена">
+      <bpmn:incoming>F17</bpmn:incoming>
     </bpmn:endEvent>
     <bpmn:subProcess id="Sub_monitoring" name="Мониторинг камеры (непрерывно, кадр за кадром)">
       <bpmn:incoming>F7</bpmn:incoming>
@@ -143,12 +151,6 @@
       <bpmn:outgoing>F8</bpmn:outgoing>
       <bpmn:errorEventDefinition id="Boundary_lost_def" errorRef="Error_stream" />
     </bpmn:boundaryEvent>
-    <bpmn:boundaryEvent id="Boundary_weekly" name="Каждый понедельник 09:00" attachedToRef="Sub_monitoring" cancelActivity="false">
-      <bpmn:outgoing>F11</bpmn:outgoing>
-      <bpmn:timerEventDefinition id="Boundary_weekly_def">
-        <bpmn:timeCycle xsi:type="bpmn:tFormalExpression">R/2026-11-02T09:00:00+05:00/P7D</bpmn:timeCycle>
-      </bpmn:timerEventDefinition>
-    </bpmn:boundaryEvent>
     <bpmn:sequenceFlow id="F1" sourceRef="Start_camera" targetRef="User_markup" />
     <bpmn:sequenceFlow id="F2" sourceRef="User_markup" targetRef="Task_calib" />
     <bpmn:sequenceFlow id="F3" sourceRef="Task_calib" targetRef="User_check" />
@@ -163,18 +165,19 @@
     <bpmn:sequenceFlow id="F8" sourceRef="Boundary_lost" targetRef="User_restore" />
     <bpmn:sequenceFlow id="F9" sourceRef="User_restore" targetRef="Gw_merge" />
     <bpmn:sequenceFlow id="F10" sourceRef="Sub_monitoring" targetRef="End_decommission" />
-    <bpmn:sequenceFlow id="F11" sourceRef="Boundary_weekly" targetRef="Task_report" />
-    <bpmn:sequenceFlow id="F12" sourceRef="Task_report" targetRef="User_review" />
-    <bpmn:sequenceFlow id="F13" sourceRef="User_review" targetRef="User_recommend" />
-    <bpmn:sequenceFlow id="F14" sourceRef="User_recommend" targetRef="Send_report" />
-    <bpmn:sequenceFlow id="F15" sourceRef="Send_report" targetRef="Gw_precision" />
-    <bpmn:sequenceFlow id="F16" name="Да" sourceRef="Gw_precision" targetRef="End_ok">
+    <bpmn:sequenceFlow id="F11" sourceRef="Start_analyst" targetRef="User_open" />
+    <bpmn:sequenceFlow id="F12" sourceRef="User_open" targetRef="Task_report" />
+    <bpmn:sequenceFlow id="F13" sourceRef="Task_report" targetRef="User_review" />
+    <bpmn:sequenceFlow id="F14" sourceRef="User_review" targetRef="User_recommend" />
+    <bpmn:sequenceFlow id="F15" sourceRef="User_recommend" targetRef="Send_report" />
+    <bpmn:sequenceFlow id="F16" sourceRef="Send_report" targetRef="Gw_precision" />
+    <bpmn:sequenceFlow id="F17" name="Да" sourceRef="Gw_precision" targetRef="End_ok">
       <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${precision &gt;= 0.90}</bpmn:conditionExpression>
     </bpmn:sequenceFlow>
-    <bpmn:sequenceFlow id="F17" name="Нет" sourceRef="Gw_precision" targetRef="Call_retraining">
+    <bpmn:sequenceFlow id="F18" name="Нет" sourceRef="Gw_precision" targetRef="Send_alert">
       <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${precision &lt; 0.90}</bpmn:conditionExpression>
     </bpmn:sequenceFlow>
-    <bpmn:sequenceFlow id="F18" sourceRef="Call_retraining" targetRef="End_retrain" />
+    <bpmn:sequenceFlow id="F19" sourceRef="Send_alert" targetRef="End_ml" />
     <bpmn:textAnnotation id="Note_config">
       <bpmn:text>Настройка при запуске psafety-stream: размер YOLOv8 (n/s/m/l/x), порог уверенности 0.45, размер входа 640 px, лимит 60 детекций в минуту, ID камеры. Зоны хранятся в zones.json, калибровка в папке calibrations.</bpmn:text>
     </bpmn:textAnnotation>
@@ -184,7 +187,7 @@
     </bpmn:textAnnotation>
     <bpmn:association id="Note_calib_assoc" sourceRef="Note_calib" targetRef="Task_calib" />
     <bpmn:textAnnotation id="Note_hitl">
-      <bpmn:text>Аналитик вручную сверяет с видео выборку нарушений (≈50 шт.). Если точность ниже целевой из Model Card — запускается retraining-цикл.</bpmn:text>
+      <bpmn:text>Отчёт не формируется по расписанию: он строится из журнала нарушений в момент, когда аналитик его открывает. Точность считается ручной сверкой ≈50 нарушений с видео.</bpmn:text>
     </bpmn:textAnnotation>
   </bpmn:process>
   <bpmndi:BPMNDiagram id="Diagram_op">
@@ -259,15 +262,15 @@
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Task_report_di" bpmnElement="Task_report">
-        <dc:Bounds x="1780" y="520" width="140" height="80" />
+        <dc:Bounds x="1750" y="460" width="140" height="80" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Call_retraining_di" bpmnElement="Call_retraining">
-        <dc:Bounds x="2220" y="380" width="140" height="80" />
+      <bpmndi:BPMNShape id="Send_alert_di" bpmnElement="Send_alert">
+        <dc:Bounds x="2360" y="430" width="140" height="80" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="End_retrain_di" bpmnElement="End_retrain">
-        <dc:Bounds x="2422" y="402" width="36" height="36" />
+      <bpmndi:BPMNShape id="End_ml_di" bpmnElement="End_ml">
+        <dc:Bounds x="2527" y="452" width="36" height="36" />
         <bpmndi:BPMNLabel>
-          <dc:Bounds x="2395" y="460" width="100" height="40" />
+          <dc:Bounds x="2500" y="510" width="90" height="40" />
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="End_decommission_di" bpmnElement="End_decommission">
@@ -276,37 +279,40 @@
           <dc:Bounds x="775" y="582" width="110" height="40" />
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Start_analyst_di" bpmnElement="Start_analyst">
+        <dc:Bounds x="1662" y="732" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1625" y="790" width="110" height="40" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="User_open_di" bpmnElement="User_open">
+        <dc:Bounds x="1750" y="710" width="140" height="80" />
+      </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="User_review_di" bpmnElement="User_review">
-        <dc:Bounds x="1780" y="710" width="140" height="80" />
+        <dc:Bounds x="1920" y="710" width="140" height="80" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="User_recommend_di" bpmnElement="User_recommend">
-        <dc:Bounds x="1930" y="710" width="140" height="80" />
+        <dc:Bounds x="2070" y="710" width="140" height="80" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Send_report_di" bpmnElement="Send_report">
-        <dc:Bounds x="2080" y="710" width="140" height="80" />
+        <dc:Bounds x="2220" y="710" width="140" height="80" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Gw_precision_di" bpmnElement="Gw_precision" isMarkerVisible="true">
-        <dc:Bounds x="2265" y="725" width="50" height="50" />
+        <dc:Bounds x="2405" y="725" width="50" height="50" />
         <bpmndi:BPMNLabel>
-          <dc:Bounds x="2200" y="690" width="90" height="40" />
+          <dc:Bounds x="2335" y="690" width="90" height="40" />
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="End_ok_di" bpmnElement="End_ok">
-        <dc:Bounds x="2422" y="732" width="36" height="36" />
+        <dc:Bounds x="2527" y="732" width="36" height="36" />
         <bpmndi:BPMNLabel>
-          <dc:Bounds x="2400" y="790" width="80" height="40" />
+          <dc:Bounds x="2505" y="790" width="80" height="40" />
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Boundary_lost_di" bpmnElement="Boundary_lost">
         <dc:Bounds x="1582" y="312" width="36" height="36" />
         <bpmndi:BPMNLabel>
           <dc:Bounds x="1622" y="296" width="110" height="27" />
-        </bpmndi:BPMNLabel>
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Boundary_weekly_di" bpmnElement="Boundary_weekly">
-        <dc:Bounds x="1702" y="542" width="36" height="36" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="1650" y="580" width="110" height="27" />
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Note_config_di" bpmnElement="Note_config">
@@ -380,42 +386,47 @@
         <di:waypoint x="848" y="560" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="F11_di" bpmnElement="F11">
-        <di:waypoint x="1738" y="560" />
-        <di:waypoint x="1780" y="560" />
+        <di:waypoint x="1698" y="750" />
+        <di:waypoint x="1750" y="750" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="F12_di" bpmnElement="F12">
-        <di:waypoint x="1850" y="600" />
-        <di:waypoint x="1850" y="710" />
+        <di:waypoint x="1820" y="710" />
+        <di:waypoint x="1820" y="540" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="F13_di" bpmnElement="F13">
-        <di:waypoint x="1920" y="750" />
-        <di:waypoint x="1930" y="750" />
+        <di:waypoint x="1890" y="500" />
+        <di:waypoint x="1990" y="500" />
+        <di:waypoint x="1990" y="710" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="F14_di" bpmnElement="F14">
+        <di:waypoint x="2060" y="750" />
         <di:waypoint x="2070" y="750" />
-        <di:waypoint x="2080" y="750" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="F15_di" bpmnElement="F15">
+        <di:waypoint x="2210" y="750" />
         <di:waypoint x="2220" y="750" />
-        <di:waypoint x="2265" y="750" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="F16_di" bpmnElement="F16">
-        <di:waypoint x="2315" y="750" />
-        <di:waypoint x="2422" y="750" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="2372" y="734" width="30" height="14" />
-        </bpmndi:BPMNLabel>
+        <di:waypoint x="2360" y="750" />
+        <di:waypoint x="2405" y="750" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="F17_di" bpmnElement="F17">
-        <di:waypoint x="2290" y="725" />
-        <di:waypoint x="2290" y="460" />
+        <di:waypoint x="2455" y="750" />
+        <di:waypoint x="2527" y="750" />
         <bpmndi:BPMNLabel>
-          <dc:Bounds x="2294" y="576" width="30" height="14" />
+          <dc:Bounds x="2495" y="734" width="30" height="14" />
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="F18_di" bpmnElement="F18">
-        <di:waypoint x="2360" y="420" />
-        <di:waypoint x="2422" y="420" />
+        <di:waypoint x="2430" y="725" />
+        <di:waypoint x="2430" y="510" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2434" y="602" width="30" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F19_di" bpmnElement="F19">
+        <di:waypoint x="2500" y="470" />
+        <di:waypoint x="2527" y="470" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="S1_di" bpmnElement="S1">
         <di:waypoint x="983" y="470" />
@@ -450,10 +461,10 @@
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Msg_report_di" bpmnElement="Msg_report">
-        <di:waypoint x="2150" y="790" />
-        <di:waypoint x="2150" y="910" />
+        <di:waypoint x="2290" y="790" />
+        <di:waypoint x="2290" y="910" />
         <bpmndi:BPMNLabel>
-          <dc:Bounds x="2156" y="812" width="120" height="14" />
+          <dc:Bounds x="2296" y="812" width="120" height="14" />
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNEdge>
     </bpmndi:BPMNPlane>
