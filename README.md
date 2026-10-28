@@ -10,6 +10,7 @@
 классифицирует возраст (взрослый / ребёнок) и строит тепловую карту нарушений.
 
 📄 **[Model Card](docs/MODEL_CARD.md)**: цель, метрики, ограничения, fairness, версии данных.
+⚙️ **[BPMN эксплуатации модели](docs/bpmn/README.md#bpmn-бизнес-процесс-эксплуатации-модели)**: подключение камеры → мониторинг → еженедельный отчёт → контроль качества.
 🔁 **[BPMN retraining-цикла](docs/bpmn/README.md)**: дрифт → переобучение → аукцион по AUC → валидация → деплой.
 🛠 **[Как вносить изменения](CONTRIBUTING.md)**: окружение, линтеры, pre-commit, ветки.
 
@@ -61,7 +62,7 @@
 ├── tests/                        # pytest (190 тестов)
 ├── docs/
 │   ├── MODEL_CARD.md
-│   └── bpmn/                     # retraining.bpmn + svg + описание
+│   └── bpmn/                     # retraining.bpmn, operation.bpmn + svg + описание
 ├── zones.json                    # разметка зон по камерам
 ├── calibrations/<camera_id>.json # калибровки классификатора возраста
 ├── heatmap_assets/               # фон тепловой карты

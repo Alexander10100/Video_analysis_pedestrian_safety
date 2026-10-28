@@ -1,0 +1,461 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_operation" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:error id="Error_stream" name="StreamLost" errorCode="STREAM_LOST" />
+  <bpmn:collaboration id="Collab_operation">
+    <bpmn:participant id="Pool_operation" name="Эксплуатация модели видеоаналитики пешеходов" processRef="Process_operation" />
+    <bpmn:participant id="Pool_customer" name="Дорожная служба (заказчик отчётов)" />
+    <bpmn:messageFlow id="Msg_report" name="Еженедельный отчёт" sourceRef="Send_report" targetRef="Pool_customer" />
+  </bpmn:collaboration>
+  <bpmn:process id="Process_operation" name="Эксплуатация модели" isExecutable="false">
+    <bpmn:laneSet id="LaneSet_op">
+      <bpmn:lane id="Lane_operator" name="Оператор камер">
+        <bpmn:flowNodeRef>Start_camera</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>User_markup</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>User_check</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gw_ok</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gw_merge</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>User_restore</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_system" name="Система видеоаналитики (автоматически)">
+        <bpmn:flowNodeRef>Task_calib</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_report</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Call_retraining</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>End_retrain</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>End_decommission</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Sub_monitoring</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Boundary_lost</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Boundary_weekly</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_analyst" name="Аналитик (human-in-the-loop)">
+        <bpmn:flowNodeRef>User_review</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>User_recommend</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Send_report</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gw_precision</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>End_ok</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:startEvent id="Start_camera" name="Новая камера подключена">
+      <bpmn:outgoing>F1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="User_markup" name="Разметить зоны: дорога, переход, ROI и тип светофора">
+      <bpmn:incoming>F1</bpmn:incoming>
+      <bpmn:incoming>F5</bpmn:incoming>
+      <bpmn:outgoing>F2</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="User_check" name="Проверить разметку и калибровку на тестовом видео">
+      <bpmn:incoming>F3</bpmn:incoming>
+      <bpmn:outgoing>F4</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:exclusiveGateway id="Gw_ok" name="Всё верно?">
+      <bpmn:incoming>F4</bpmn:incoming>
+      <bpmn:outgoing>F5</bpmn:outgoing>
+      <bpmn:outgoing>F6</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:exclusiveGateway id="Gw_merge">
+      <bpmn:incoming>F6</bpmn:incoming>
+      <bpmn:incoming>F9</bpmn:incoming>
+      <bpmn:outgoing>F7</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:userTask id="User_restore" name="Восстановить камеру или поток">
+      <bpmn:incoming>F8</bpmn:incoming>
+      <bpmn:outgoing>F9</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:serviceTask id="Task_calib" name="Калибровка классификатора возраста (psafety-calibrate)">
+      <bpmn:incoming>F2</bpmn:incoming>
+      <bpmn:outgoing>F3</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Task_report" name="Сформировать отчёт и тепловую карту за неделю">
+      <bpmn:incoming>F11</bpmn:incoming>
+      <bpmn:outgoing>F12</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:callActivity id="Call_retraining" name="Retraining-цикл модели (retraining.bpmn)" calledElement="Process_retraining">
+      <bpmn:incoming>F17</bpmn:incoming>
+      <bpmn:outgoing>F18</bpmn:outgoing>
+    </bpmn:callActivity>
+    <bpmn:endEvent id="End_retrain" name="Передано на переобучение">
+      <bpmn:incoming>F18</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:endEvent id="End_decommission" name="Камера выведена из эксплуатации">
+      <bpmn:incoming>F10</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:userTask id="User_review" name="Проверить выборку нарушений по видео, посчитать точность">
+      <bpmn:incoming>F12</bpmn:incoming>
+      <bpmn:outgoing>F13</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="User_recommend" name="Подготовить рекомендации: где нужен переход, светофор">
+      <bpmn:incoming>F13</bpmn:incoming>
+      <bpmn:outgoing>F14</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:sendTask id="Send_report" name="Отправить отчёт и тепловую карту">
+      <bpmn:incoming>F14</bpmn:incoming>
+      <bpmn:outgoing>F15</bpmn:outgoing>
+    </bpmn:sendTask>
+    <bpmn:exclusiveGateway id="Gw_precision" name="Точность нарушений ≥ 0.90?">
+      <bpmn:incoming>F15</bpmn:incoming>
+      <bpmn:outgoing>F16</bpmn:outgoing>
+      <bpmn:outgoing>F17</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:endEvent id="End_ok" name="Неделя закрыта">
+      <bpmn:incoming>F16</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:subProcess id="Sub_monitoring" name="Мониторинг камеры (непрерывно, кадр за кадром)">
+      <bpmn:incoming>F7</bpmn:incoming>
+      <bpmn:outgoing>F10</bpmn:outgoing>
+      <bpmn:standardLoopCharacteristics id="Loop_monitoring">
+        <bpmn:loopCondition xsi:type="bpmn:tFormalExpression">${cameraInService}</bpmn:loopCondition>
+      </bpmn:standardLoopCharacteristics>
+      <bpmn:startEvent id="Sub_start">
+        <bpmn:outgoing>S1</bpmn:outgoing>
+      </bpmn:startEvent>
+      <bpmn:serviceTask id="Task_detect" name="Детекция и трекинг людей и ТС (YOLOv8)">
+        <bpmn:incoming>S1</bpmn:incoming>
+        <bpmn:outgoing>S2</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:serviceTask id="Task_analyze" name="Отсеять водителей, возраст, сигнал светофора">
+        <bpmn:incoming>S2</bpmn:incoming>
+        <bpmn:outgoing>S3</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:exclusiveGateway id="Gw_violation" name="Нарушение?">
+        <bpmn:incoming>S3</bpmn:incoming>
+        <bpmn:outgoing>S4</bpmn:outgoing>
+        <bpmn:outgoing>S6</bpmn:outgoing>
+      </bpmn:exclusiveGateway>
+      <bpmn:serviceTask id="Task_log" name="Записать в журнал нарушений">
+        <bpmn:incoming>S4</bpmn:incoming>
+        <bpmn:outgoing>S5</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:endEvent id="Sub_end" name="Кадр обработан">
+        <bpmn:incoming>S5</bpmn:incoming>
+        <bpmn:incoming>S6</bpmn:incoming>
+      </bpmn:endEvent>
+      <bpmn:sequenceFlow id="S1" sourceRef="Sub_start" targetRef="Task_detect" />
+      <bpmn:sequenceFlow id="S2" sourceRef="Task_detect" targetRef="Task_analyze" />
+      <bpmn:sequenceFlow id="S3" sourceRef="Task_analyze" targetRef="Gw_violation" />
+      <bpmn:sequenceFlow id="S4" name="Да" sourceRef="Gw_violation" targetRef="Task_log">
+        <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${violation}</bpmn:conditionExpression>
+      </bpmn:sequenceFlow>
+      <bpmn:sequenceFlow id="S5" sourceRef="Task_log" targetRef="Sub_end" />
+      <bpmn:sequenceFlow id="S6" name="Нет" sourceRef="Gw_violation" targetRef="Sub_end">
+        <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${!violation}</bpmn:conditionExpression>
+      </bpmn:sequenceFlow>
+    </bpmn:subProcess>
+    <bpmn:boundaryEvent id="Boundary_lost" name="Поток с камеры потерян" attachedToRef="Sub_monitoring">
+      <bpmn:outgoing>F8</bpmn:outgoing>
+      <bpmn:errorEventDefinition id="Boundary_lost_def" errorRef="Error_stream" />
+    </bpmn:boundaryEvent>
+    <bpmn:boundaryEvent id="Boundary_weekly" name="Каждый понедельник 09:00" attachedToRef="Sub_monitoring" cancelActivity="false">
+      <bpmn:outgoing>F11</bpmn:outgoing>
+      <bpmn:timerEventDefinition id="Boundary_weekly_def">
+        <bpmn:timeCycle xsi:type="bpmn:tFormalExpression">R/2026-11-02T09:00:00+05:00/P7D</bpmn:timeCycle>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+    <bpmn:sequenceFlow id="F1" sourceRef="Start_camera" targetRef="User_markup" />
+    <bpmn:sequenceFlow id="F2" sourceRef="User_markup" targetRef="Task_calib" />
+    <bpmn:sequenceFlow id="F3" sourceRef="Task_calib" targetRef="User_check" />
+    <bpmn:sequenceFlow id="F4" sourceRef="User_check" targetRef="Gw_ok" />
+    <bpmn:sequenceFlow id="F5" name="Нет" sourceRef="Gw_ok" targetRef="User_markup">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${!markupOk}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="F6" name="Да" sourceRef="Gw_ok" targetRef="Gw_merge">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${markupOk}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="F7" sourceRef="Gw_merge" targetRef="Sub_monitoring" />
+    <bpmn:sequenceFlow id="F8" sourceRef="Boundary_lost" targetRef="User_restore" />
+    <bpmn:sequenceFlow id="F9" sourceRef="User_restore" targetRef="Gw_merge" />
+    <bpmn:sequenceFlow id="F10" sourceRef="Sub_monitoring" targetRef="End_decommission" />
+    <bpmn:sequenceFlow id="F11" sourceRef="Boundary_weekly" targetRef="Task_report" />
+    <bpmn:sequenceFlow id="F12" sourceRef="Task_report" targetRef="User_review" />
+    <bpmn:sequenceFlow id="F13" sourceRef="User_review" targetRef="User_recommend" />
+    <bpmn:sequenceFlow id="F14" sourceRef="User_recommend" targetRef="Send_report" />
+    <bpmn:sequenceFlow id="F15" sourceRef="Send_report" targetRef="Gw_precision" />
+    <bpmn:sequenceFlow id="F16" name="Да" sourceRef="Gw_precision" targetRef="End_ok">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${precision &gt;= 0.90}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="F17" name="Нет" sourceRef="Gw_precision" targetRef="Call_retraining">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${precision &lt; 0.90}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="F18" sourceRef="Call_retraining" targetRef="End_retrain" />
+    <bpmn:textAnnotation id="Note_config">
+      <bpmn:text>Настройка при запуске psafety-stream: размер YOLOv8 (n/s/m/l/x), порог уверенности 0.45, размер входа 640 px, лимит 60 детекций в минуту, ID камеры. Зоны хранятся в zones.json, калибровка в папке calibrations.</bpmn:text>
+    </bpmn:textAnnotation>
+    <bpmn:association id="Note_config_assoc" sourceRef="Note_config" targetRef="Sub_monitoring" />
+    <bpmn:textAnnotation id="Note_calib">
+      <bpmn:text>Калибровка: по видео без детей система запоминает рост взрослого в 10 полосах кадра (75-й перцентиль высоты рамок). Без неё все люди считаются взрослыми.</bpmn:text>
+    </bpmn:textAnnotation>
+    <bpmn:association id="Note_calib_assoc" sourceRef="Note_calib" targetRef="Task_calib" />
+    <bpmn:textAnnotation id="Note_hitl">
+      <bpmn:text>Аналитик вручную сверяет с видео выборку нарушений (≈50 шт.). Если точность ниже целевой из Model Card — запускается retraining-цикл.</bpmn:text>
+    </bpmn:textAnnotation>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="Diagram_op">
+    <bpmndi:BPMNPlane id="Plane_op" bpmnElement="Collab_operation">
+      <bpmndi:BPMNShape id="Pool_operation_di" bpmnElement="Pool_operation" isHorizontal="true">
+        <dc:Bounds x="160" y="80" width="2440" height="780" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Pool_customer_di" bpmnElement="Pool_customer" isHorizontal="true">
+        <dc:Bounds x="1700" y="910" width="900" height="60" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_operator_di" bpmnElement="Lane_operator" isHorizontal="true">
+        <dc:Bounds x="190" y="80" width="2410" height="220" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_system_di" bpmnElement="Lane_system" isHorizontal="true">
+        <dc:Bounds x="190" y="300" width="2410" height="340" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_analyst_di" bpmnElement="Lane_analyst" isHorizontal="true">
+        <dc:Bounds x="190" y="640" width="2410" height="220" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub_monitoring_di" bpmnElement="Sub_monitoring" isExpanded="true">
+        <dc:Bounds x="920" y="330" width="800" height="280" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Start_camera_di" bpmnElement="Start_camera">
+        <dc:Bounds x="222" y="172" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="200" y="230" width="90" height="40" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="User_markup_di" bpmnElement="User_markup">
+        <dc:Bounds x="320" y="150" width="140" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="User_check_di" bpmnElement="User_check">
+        <dc:Bounds x="630" y="150" width="140" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gw_ok_di" bpmnElement="Gw_ok" isMarkerVisible="true">
+        <dc:Bounds x="825" y="165" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="825" y="225" width="60" height="40" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gw_merge_di" bpmnElement="Gw_merge" isMarkerVisible="true">
+        <dc:Bounds x="975" y="165" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="User_restore_di" bpmnElement="User_restore">
+        <dc:Bounds x="1530" y="150" width="140" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_calib_di" bpmnElement="Task_calib">
+        <dc:Bounds x="470" y="380" width="140" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub_start_di" bpmnElement="Sub_start">
+        <dc:Bounds x="947" y="452" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_detect_di" bpmnElement="Task_detect">
+        <dc:Bounds x="1015" y="430" width="140" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_analyze_di" bpmnElement="Task_analyze">
+        <dc:Bounds x="1175" y="430" width="140" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gw_violation_di" bpmnElement="Gw_violation" isMarkerVisible="true">
+        <dc:Bounds x="1360" y="445" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1335" y="406" width="60" height="40" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_log_di" bpmnElement="Task_log">
+        <dc:Bounds x="1450" y="430" width="140" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub_end_di" bpmnElement="Sub_end">
+        <dc:Bounds x="1637" y="452" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1630" y="495" width="60" height="40" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_report_di" bpmnElement="Task_report">
+        <dc:Bounds x="1780" y="520" width="140" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Call_retraining_di" bpmnElement="Call_retraining">
+        <dc:Bounds x="2220" y="380" width="140" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_retrain_di" bpmnElement="End_retrain">
+        <dc:Bounds x="2422" y="402" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2395" y="460" width="100" height="40" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_decommission_di" bpmnElement="End_decommission">
+        <dc:Bounds x="812" y="542" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="775" y="582" width="110" height="40" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="User_review_di" bpmnElement="User_review">
+        <dc:Bounds x="1780" y="710" width="140" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="User_recommend_di" bpmnElement="User_recommend">
+        <dc:Bounds x="1930" y="710" width="140" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Send_report_di" bpmnElement="Send_report">
+        <dc:Bounds x="2080" y="710" width="140" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gw_precision_di" bpmnElement="Gw_precision" isMarkerVisible="true">
+        <dc:Bounds x="2265" y="725" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2200" y="690" width="90" height="40" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_ok_di" bpmnElement="End_ok">
+        <dc:Bounds x="2422" y="732" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2400" y="790" width="80" height="40" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Boundary_lost_di" bpmnElement="Boundary_lost">
+        <dc:Bounds x="1582" y="312" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1622" y="296" width="110" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Boundary_weekly_di" bpmnElement="Boundary_weekly">
+        <dc:Bounds x="1702" y="542" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1650" y="580" width="110" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Note_config_di" bpmnElement="Note_config">
+        <dc:Bounds x="1700" y="95" width="430" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Note_config_assoc_di" bpmnElement="Note_config_assoc">
+        <di:waypoint x="1800" y="165" />
+        <di:waypoint x="1720" y="380" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="Note_calib_di" bpmnElement="Note_calib">
+        <dc:Bounds x="230" y="520" width="380" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Note_calib_assoc_di" bpmnElement="Note_calib_assoc">
+        <di:waypoint x="420" y="520" />
+        <di:waypoint x="500" y="460" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="Note_hitl_di" bpmnElement="Note_hitl">
+        <dc:Bounds x="2160" y="95" width="400" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="F1_di" bpmnElement="F1">
+        <di:waypoint x="258" y="190" />
+        <di:waypoint x="320" y="190" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F2_di" bpmnElement="F2">
+        <di:waypoint x="390" y="230" />
+        <di:waypoint x="390" y="420" />
+        <di:waypoint x="470" y="420" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F3_di" bpmnElement="F3">
+        <di:waypoint x="610" y="420" />
+        <di:waypoint x="700" y="420" />
+        <di:waypoint x="700" y="230" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F4_di" bpmnElement="F4">
+        <di:waypoint x="770" y="190" />
+        <di:waypoint x="825" y="190" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F5_di" bpmnElement="F5">
+        <di:waypoint x="850" y="165" />
+        <di:waypoint x="850" y="110" />
+        <di:waypoint x="390" y="110" />
+        <di:waypoint x="390" y="150" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="854" y="122" width="30" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F6_di" bpmnElement="F6">
+        <di:waypoint x="875" y="190" />
+        <di:waypoint x="975" y="190" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="929" y="174" width="30" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F7_di" bpmnElement="F7">
+        <di:waypoint x="1000" y="215" />
+        <di:waypoint x="1000" y="300" />
+        <di:waypoint x="1000" y="330" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F8_di" bpmnElement="F8">
+        <di:waypoint x="1600" y="312" />
+        <di:waypoint x="1600" y="230" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F9_di" bpmnElement="F9">
+        <di:waypoint x="1600" y="150" />
+        <di:waypoint x="1600" y="110" />
+        <di:waypoint x="1000" y="110" />
+        <di:waypoint x="1000" y="165" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F10_di" bpmnElement="F10">
+        <di:waypoint x="920" y="560" />
+        <di:waypoint x="848" y="560" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F11_di" bpmnElement="F11">
+        <di:waypoint x="1738" y="560" />
+        <di:waypoint x="1780" y="560" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F12_di" bpmnElement="F12">
+        <di:waypoint x="1850" y="600" />
+        <di:waypoint x="1850" y="710" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F13_di" bpmnElement="F13">
+        <di:waypoint x="1920" y="750" />
+        <di:waypoint x="1930" y="750" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F14_di" bpmnElement="F14">
+        <di:waypoint x="2070" y="750" />
+        <di:waypoint x="2080" y="750" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F15_di" bpmnElement="F15">
+        <di:waypoint x="2220" y="750" />
+        <di:waypoint x="2265" y="750" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F16_di" bpmnElement="F16">
+        <di:waypoint x="2315" y="750" />
+        <di:waypoint x="2422" y="750" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2372" y="734" width="30" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F17_di" bpmnElement="F17">
+        <di:waypoint x="2290" y="725" />
+        <di:waypoint x="2290" y="460" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2294" y="576" width="30" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F18_di" bpmnElement="F18">
+        <di:waypoint x="2360" y="420" />
+        <di:waypoint x="2422" y="420" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="S1_di" bpmnElement="S1">
+        <di:waypoint x="983" y="470" />
+        <di:waypoint x="1015" y="470" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="S2_di" bpmnElement="S2">
+        <di:waypoint x="1155" y="470" />
+        <di:waypoint x="1175" y="470" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="S3_di" bpmnElement="S3">
+        <di:waypoint x="1315" y="470" />
+        <di:waypoint x="1360" y="470" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="S4_di" bpmnElement="S4">
+        <di:waypoint x="1410" y="470" />
+        <di:waypoint x="1450" y="470" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1434" y="454" width="30" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="S5_di" bpmnElement="S5">
+        <di:waypoint x="1590" y="470" />
+        <di:waypoint x="1637" y="470" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="S6_di" bpmnElement="S6">
+        <di:waypoint x="1385" y="495" />
+        <di:waypoint x="1385" y="570" />
+        <di:waypoint x="1655" y="570" />
+        <di:waypoint x="1655" y="488" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1389" y="516" width="30" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Msg_report_di" bpmnElement="Msg_report">
+        <di:waypoint x="2150" y="790" />
+        <di:waypoint x="2150" y="910" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2156" y="812" width="120" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
